@@ -11,13 +11,14 @@ from ui.daily_digest import DailyDigest
 from ui.tiktok_checker import TikTokChecker
 from ui.analytics import Analytics
 from ui.settings import Settings
-from services.scheduler_service import start as start_scheduler, update_schedule
+from ui.keyword_experiments_tab import KeywordExperimentsTab
 
 NAV_ITEMS = [
     ("🤖  Agent Loop",    "agent"),
     ("🔍  Discovery",     "discovery"),
     ("📋  Daily Digest",  "digest"),
     ("🎯  TikTok Check",  "tiktok"),
+    ("🧪  Keyword Exp",   "keywords"),
     ("📊  Analytics",     "analytics"),
     ("⚙️  Settings",      "settings"),
 ]
@@ -51,7 +52,7 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # ── Sidebar ───────────────────────────────────────────────────────
+        # Sidebar
         sidebar = QWidget()
         sidebar.setFixedWidth(200)
         sidebar.setStyleSheet("background:#0f172a;")
@@ -82,7 +83,7 @@ class MainWindow(QMainWindow):
         sb.addStretch()
         root.addWidget(sidebar)
 
-        # ── Stack ─────────────────────────────────────────────────────────
+        # Stack
         self.stack = QStackedWidget()
         self.stack.setStyleSheet("background:#1e293b;")
 
@@ -90,11 +91,12 @@ class MainWindow(QMainWindow):
         self._discovery  = ChannelDiscovery()
         self._digest     = DailyDigest()
         self._tiktok     = TikTokChecker()
+        self._keywords   = KeywordExperimentsTab()
         self._analytics  = Analytics()
         self._settings   = Settings()
 
         for w in [self._agent, self._discovery, self._digest, self._tiktok,
-                  self._analytics, self._settings]:
+                  self._keywords, self._analytics, self._settings]:
             self.stack.addWidget(w)
 
         # feed videos from discovery → show in digest tab
@@ -105,7 +107,7 @@ class MainWindow(QMainWindow):
 
     def _switch(self, key: str):
         idx = {"agent": 0, "discovery": 1, "digest": 2, "tiktok": 3,
-               "analytics": 4, "settings": 5}
+               "keywords": 4, "analytics": 5, "settings": 6}
         for k, btn in self._nav_btns.items():
             btn.setChecked(k == key)
         self.stack.setCurrentIndex(idx[key])

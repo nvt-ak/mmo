@@ -5,7 +5,7 @@ US-001 Phase 1 cleanup validation.
 import pytest
 from uuid import uuid4
 from videoscout.database.db import get_connection
-from videoscout.models import (
+from models import (
     KeywordExperiment,
     compute_actual_score,
     classify_outcome,

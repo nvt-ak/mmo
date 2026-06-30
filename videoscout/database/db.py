@@ -131,5 +131,37 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_patterns_outcome ON keyword_patterns(outcome_type);
         CREATE INDEX IF NOT EXISTS idx_patterns_confidence ON keyword_patterns(confidence DESC);
     """)
+
+    
+    # Agent tables (migrated from db_migrations.py)
+    conn.executescript("""
+        -- Agent outcomes table
+        CREATE TABLE IF NOT EXISTS channel_outcomes (
+            channel_id      TEXT PRIMARY KEY,
+            name            TEXT NOT NULL,
+            subscribers     INTEGER DEFAULT 0,
+            videos_found    INTEGER DEFAULT 0,
+            avg_video_score REAL DEFAULT 0,
+            llm_score       INTEGER,
+            llm_recommendation TEXT,
+            llm_reasoning   TEXT,
+            outcome         TEXT DEFAULT 'unknown',
+            created_at      TEXT DEFAULT (datetime('now'))
+        );
+        
+        -- Agent loop history
+        CREATE TABLE IF NOT EXISTS agent_loops (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            loop_type       TEXT NOT NULL,
+            discovered      INTEGER DEFAULT 0,
+            evaluated       INTEGER DEFAULT 0,
+            recommended     INTEGER DEFAULT 0,
+            auto_followed   INTEGER DEFAULT 0,
+            learning_status TEXT,
+            result_json     TEXT,
+            started_at      TEXT DEFAULT (datetime('now')),
+            completed_at    TEXT
+        );
+    """)
     conn.commit()
     conn.close()
