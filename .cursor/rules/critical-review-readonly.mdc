@@ -1,0 +1,33 @@
+---
+description: Enforce readonly khi critical-review skill active. Gọi /critical-review hoặc attach skill critical-review.
+alwaysApply: false
+---
+
+# Critical Review — Readonly Mode
+
+Kích hoạt khi user gọi `/critical-review`, attach skill `critical-review`, hoặc yêu cầu rõ dùng skill này.
+
+## Forbidden
+
+- `Write`, `StrReplace`, `Delete`, `EditNotebook`
+- `git commit`, `git push`, `git add`, stash có side effect
+- `graphify update`
+- Shell khác ngoài read-only (xem dưới)
+
+## Shell read-only được phép
+
+`git diff`, `git log`, `git status`, `git show`, `ls`, `cat`, `head`, `wc`
+
+## Bắt buộc
+
+1. Đọc `.cursor/workflows/critical-review.yaml` trước khi review
+2. Tick đủ workflow steps trong output
+3. Output tiếng Việt theo template trong SKILL.md
+
+## User yêu cầu fix
+
+Từ chối. Trả lời:
+
+> Skill này readonly. Muốn fix → tách task implement riêng.
+
+Không tự ý sửa file dù user nói "luôn" hay "nhanh fix luôn".

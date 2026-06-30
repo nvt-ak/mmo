@@ -1,0 +1,268 @@
+"""
+Schema tests for keyword experiments.
+US-001 Phase 1 cleanup validation.
+"""
+import pytest
+from uuid import uuid4
+from database.db import get_connection
+from models import (
+    KeywordExperiment,
+    compute_actual_score,
+    classify_outcome,
+    compute_accuracy,
+    PREDICTED_SUCCESS_THRESHOLD
+)
+
+
+@pytest.fixture
+def db_conn():
+    """Test database connection."""
+    conn = get_connection()
+    
+    # Create test channel
+    conn.execute("""
+        INSERT OR IGNORE INTO channels 
+        (id, name, url, subscribers, avg_views)
+        VALUES ('CH_TEST', 'Test Channel', 'https://youtube.com/test', 5000, 2000)
+    """)
+    conn.commit()
+    
+    yield conn
+    
+    # Cleanup
+    conn.execute("DELETE FROM keyword_experiments WHERE channel_id = 'CH_TEST'")
+    conn.execute("DELETE FROM channels WHERE id = 'CH_TEST'")
+    conn.commit()
+    conn.close()
+
+
+def test_insert_experiment_with_all_fields(db_conn):
+    """Test schema accepts all experiment fields."""
+    exp_id = str(uuid4())
+    
+    db_conn.execute("""
+        INSERT INTO keyword_experiments 
+        (id, keyword, channel_id, channel_subscribers, creator_avg_views,
+         suggestion_source, predicted_score, prediction_reasoning,
+         account_label, keyword_traits)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        exp_id, "test keyword", "CH_TEST", 5000, 2000,
+        "agent_suggested", 75, "Test reasoning",
+        "Account-DE-042", '["long_tail", "tutorial"]'
+    ))
+    db_conn.commit()
+    
+    result = db_conn.execute(
+        "SELECT * FROM keyword_experiments WHERE id = ?", 
+        (exp_id,)
+    ).fetchone()
+    
+    assert result['keyword'] == 'test keyword'
+    assert result['suggestion_source'] == 'agent_suggested'
+    assert result['account_label'] == 'Account-DE-042'
+    assert result['keyword_traits'] == '["long_tail", "tutorial"]'
+
+
+def test_suggestion_source_constraint(db_conn):
+    """Test CHECK constraint on suggestion_source."""
+    exp_id = str(uuid4())
+    
+    with pytest.raises(Exception) as exc_info:
+        db_conn.execute("""
+            INSERT INTO keyword_experiments 
+            (id, keyword, channel_id, suggestion_source, predicted_score)
+            VALUES (?, ?, ?, ?, ?)
+        """, (exp_id, "test", "CH_TEST", "invalid_source", 70))
+        db_conn.commit()
+    
+    assert "CHECK constraint failed" in str(exc_info.value)
+
+
+def test_test_status_constraint(db_conn):
+    """Test CHECK constraint on test_status."""
+    exp_id = str(uuid4())
+    
+    with pytest.raises(Exception) as exc_info:
+        db_conn.execute("""
+            INSERT INTO keyword_experiments 
+            (id, keyword, channel_id, suggestion_source, predicted_score, test_status)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (exp_id, "test", "CH_TEST", "user_manual", 70, "invalid_status"))
+        db_conn.commit()
+    
+    assert "CHECK constraint failed" in str(exc_info.value)
+
+
+def test_reminder_query(db_conn):
+    """Test 7+ days old experiments query."""
+    # Insert old experiment
+    old_exp_id = str(uuid4())
+    db_conn.execute("""
+        INSERT INTO keyword_experiments 
+        (id, keyword, channel_id, suggestion_source, predicted_score, 
+         test_status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-8 days'))
+    """, (old_exp_id, "old keyword", "CH_TEST", "user_manual", 70, "in_progress"))
+    
+    # Insert recent experiment
+    recent_exp_id = str(uuid4())
+    db_conn.execute("""
+        INSERT INTO keyword_experiments 
+        (id, keyword, channel_id, suggestion_source, predicted_score, test_status)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (recent_exp_id, "recent keyword", "CH_TEST", "user_manual", 70, "in_progress"))
+    
+    db_conn.commit()
+    
+    # Query old experiments
+    old_experiments = db_conn.execute("""
+        SELECT * FROM keyword_experiments
+        WHERE test_status = 'in_progress'
+        AND julianday('now') - julianday(created_at) >= 7
+    """).fetchall()
+    
+    assert len(old_experiments) >= 1
+    assert any(exp['id'] == old_exp_id for exp in old_experiments)
+    assert not any(exp['id'] == recent_exp_id for exp in old_experiments)
+
+
+def test_compute_actual_score_doc_example():
+    """Test actual_score formula matches docs example."""
+    # Doc example: 4500 views, 2K avg, 12% engagement → 93
+    score = compute_actual_score(
+        actual_views=4500,
+        creator_avg_views=2000,
+        actual_engagement=12.0
+    )
+    
+    # views_component = min(75, 2.25 * 35) = 75
+    # engagement_component = min(25, 12 * 1.2) = 14.4
+    # total = 89.4
+    assert 89.0 <= score <= 90.0, f"Expected ~89.4, got {score}"
+
+
+def test_compute_actual_score_macro_fail():
+    """Test actual_score for macro creator underperformance."""
+    # 4K views on 100K avg channel, 5% engagement
+    score = compute_actual_score(
+        actual_views=4000,
+        creator_avg_views=100000,
+        actual_engagement=5.0
+    )
+    
+    # views_component = min(75, 0.04 * 35) = 1.4
+    # engagement_component = min(25, 5 * 1.2) = 6.0
+    # total = 7.4
+    assert 7.0 <= score <= 8.0, f"Expected ~7.4, got {score}"
+
+
+def test_compute_actual_score_with_retention():
+    """Test retention bonus."""
+    score_without = compute_actual_score(4500, 2000, 12.0)
+    score_with = compute_actual_score(4500, 2000, 12.0, actual_retention=50.0)
+    
+    # Retention adds min(10, 50 * 0.2) = 10
+    assert score_with == score_without + 10.0
+
+
+def test_classify_outcome_all_types():
+    """Test all outcome classifications."""
+    # True Positive
+    assert classify_outcome(70, 'success') == 'true_positive'
+    
+    # False Positive
+    assert classify_outcome(70, 'failed') == 'false_positive'
+    
+    # True Negative
+    assert classify_outcome(50, 'failed') == 'true_negative'
+    
+    # False Negative
+    assert classify_outcome(50, 'success') == 'false_negative'
+    
+    # In Progress
+    assert classify_outcome(70, 'in_progress') is None
+    
+    # Partial = fail
+    assert classify_outcome(70, 'partial') == 'false_positive'
+    assert classify_outcome(50, 'partial') == 'true_negative'
+
+
+def test_classify_outcome_threshold():
+    """Test PREDICTED_SUCCESS_THRESHOLD = 60."""
+    assert PREDICTED_SUCCESS_THRESHOLD == 60
+    
+    # Edge cases
+    assert classify_outcome(60, 'success') == 'true_positive'  # >= threshold
+    assert classify_outcome(59, 'success') == 'false_negative'  # < threshold
+
+
+def test_compute_accuracy():
+    """Test accuracy formula."""
+    # Perfect prediction
+    assert compute_accuracy(75, 75.0) == 1.0
+    
+    # Doc example: predicted 72, actual ~89.4 
+    # accuracy = 1 - |72 - 89.4| / 100 = 0.826
+    accuracy = compute_accuracy(72, 89.4)
+    assert 0.82 <= accuracy <= 0.83
+    
+    # Large error (allow floating point tolerance)
+    accuracy = compute_accuracy(90, 10.0)
+    assert abs(accuracy - 0.2) < 0.001
+
+
+def test_dataclass_from_db_row(db_conn):
+    """Test KeywordExperiment.from_db_row()."""
+    exp_id = str(uuid4())
+    
+    db_conn.execute("""
+        INSERT INTO keyword_experiments 
+        (id, keyword, channel_id, channel_subscribers, creator_avg_views,
+         suggestion_source, predicted_score, test_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (exp_id, "test", "CH_TEST", 5000, 2000, "user_manual", 75, "in_progress"))
+    db_conn.commit()
+    
+    row = db_conn.execute(
+        "SELECT * FROM keyword_experiments WHERE id = ?",
+        (exp_id,)
+    ).fetchone()
+    
+    exp = KeywordExperiment.from_db_row(row)
+    
+    assert exp.id == exp_id
+    assert exp.keyword == "test"
+    assert exp.suggestion_source == "user_manual"
+    assert exp.predicted_score == 75
+    assert exp.test_status == "in_progress"
+
+
+def test_pattern_with_adjustment(db_conn):
+    """Test keyword_patterns with suggested_adjustment."""
+    pattern_id = str(uuid4())
+    
+    db_conn.execute("""
+        INSERT INTO keyword_patterns
+        (id, pattern_type, keyword_trait, outcome_type, insight,
+         occurrence_count, confidence, suggested_adjustment, experiment_ids)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        pattern_id, "overestimate", "contains_viral", "false_positive",
+        "Keywords with 'viral' overestimated", 5, 0.82,
+        '{"search_volume": 0.9}',
+        '["exp1", "exp2", "exp3", "exp4", "exp5"]'
+    ))
+    db_conn.commit()
+    
+    pattern = db_conn.execute(
+        "SELECT * FROM keyword_patterns WHERE id = ?",
+        (pattern_id,)
+    ).fetchone()
+    
+    assert pattern['suggested_adjustment'] == '{"search_volume": 0.9}'
+    assert pattern['experiment_ids'] == '["exp1", "exp2", "exp3", "exp4", "exp5"]'
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

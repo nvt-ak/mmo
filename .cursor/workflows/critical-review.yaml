@@ -1,0 +1,97 @@
+name: critical-review
+version: 1
+readonly: true
+
+forbidden_tools:
+  - Write
+  - StrReplace
+  - Delete
+  - EditNotebook
+  # Shell: chỉ read-only — git diff, git log, git status, git show, ls, cat
+
+allowed_read_tools:
+  - Read
+  - Grep
+  - Glob
+  - SemanticSearch
+  - CallMcpTool
+  - Task
+
+subagent_triggers:
+  diff_file_threshold: 10
+  subagent_type: cavecrew-reviewer
+  readonly: true
+
+steps:
+  - id: scope
+    name: "Xác định phạm vi"
+    required: true
+    gate: "Không sang step tiếp nếu chưa liệt kê artifact type + danh sách files"
+    actions:
+      - "Xác định loại: code | spec | plan | mixed"
+      - "Liệt kê files/docs trong phạm vi review"
+      - "Xác định baseline (spec, AC, user story, requirement gốc)"
+    output: scope_summary
+
+  - id: context
+    name: "Thu thập context"
+    required: true
+    gate: "Phải đọc ít nhất baseline doc trước khi đánh giá"
+    actions:
+      - "Đọc spec/requirement/AC liên quan"
+      - "Đọc ARCHITECTURE.md / AGENTS.md nếu review code"
+      - "Đọc git diff hoặc target files"
+    output: context_notes
+
+  - id: requirements_trace
+    name: "Trace yêu cầu → thực tế"
+    required: true
+    skip_when: "artifact type = code-only, không có spec/AC"
+    actions:
+      - "Liệt kê từng requirement/AC"
+      - "Map: implemented | partial | missing | out-of-scope"
+      - "Ghi GAP cho partial/missing"
+    output: trace_matrix
+
+  - id: correctness
+    name: "Kiểm tra correctness"
+    required: true
+    skip_when: "artifact type = plan-only (không có code)"
+    actions:
+      - "Logic bugs, edge cases, error handling"
+      - "Regression risk so với code xung quanh"
+      - "Test coverage cho thay đổi (nếu có)"
+      - "Optional: spawn cavecrew-reviewer nếu diff > threshold"
+    output: findings_correctness
+
+  - id: risk
+    name: "Phân tích risk"
+    required: true
+    actions:
+      - "Security (injection, auth, secrets, data leak)"
+      - "Data integrity (migration, schema, race)"
+      - "Ops (deploy, rollback, config)"
+      - "Maintainability (coupling, dead code, unclear boundary)"
+      - "Mỗi risk: Impact × Likelihood"
+    output: risk_matrix
+
+  - id: evidence_gate
+    name: "Anti-hallucination gate"
+    required: true
+    gate: "BLOCKER — không sang verdict nếu có finding không có citation"
+    actions:
+      - "Re-check mọi GAP/finding/risk có evidence"
+      - "Tag [CHƯA XÁC MINH] cho claim không verify được"
+      - "Tag [SUY LUẬN] cho inference không có fact trực tiếp"
+      - "Xóa hoặc downgrade finding không có basis"
+    output: validated_findings
+
+  - id: verdict
+    name: "Verdict"
+    required: true
+    gate: "Chỉ chạy khi steps 1–6 (hoặc skip hợp lệ) đã tick"
+    actions:
+      - "Tổng hợp blockers"
+      - "Verdict: Đủ điều kiện | Cần sửa | Cần làm rõ"
+      - "Không praise, không hedge"
+    output: final_report

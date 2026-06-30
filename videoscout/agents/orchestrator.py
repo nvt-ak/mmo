@@ -133,3 +133,66 @@ def apply_learning_suggestions(approved_suggestions: dict):
     log.info("Applying approved suggestions")
     learn_agent.apply_approved_suggestions(approved_suggestions)
     log.info("Strategy updated successfully")
+
+
+def run_keyword_learning_cycle() -> dict:
+    """
+    Analyze keyword experiments and suggest weight adjustments.
+    
+    Returns:
+        {
+            "status": "completed" | "insufficient_data",
+            "analysis": dict,
+            "suggestions": dict,
+            "action_required": "human_approval" | "none",
+            "loop_id": int | None
+        }
+    """
+    log.info("=== Orchestrator: Keyword Learning Cycle Starting ===")
+    
+    # Analyze keyword experiments
+    analysis = learn_agent.analyze_keyword_experiments()
+    
+    if analysis["status"] == "insufficient_data":
+        log.info("Insufficient experiment data")
+        return {
+            "status": "insufficient_data",
+            "message": f"Need at least 5 completed experiments. Current: {analysis['stats']['total']}"
+        }
+    
+    # Generate suggestions (don't auto-apply)
+    suggestions = learn_agent.suggest_scoring_adjustments(analysis['patterns'])
+    
+    # Save to agent_loops table
+    conn = get_connection()
+    loop_id = conn.execute("""
+        INSERT INTO agent_loops 
+        (loop_type, discovered, evaluated, learning_status, result_json, started_at, completed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        RETURNING id
+    """, (
+        "keyword_learning",
+        0,  # discovered (not applicable)
+        len(analysis['stats']['total']),  # evaluated experiments
+        "pending_approval" if suggestions['weight_adjustments'] else "no_adjustments",
+        json.dumps({"analysis": analysis, "suggestions": suggestions}),
+        datetime.now().isoformat(),
+        datetime.now().isoformat()
+    )).fetchone()['id']
+    conn.commit()
+    
+    log.info(f"Keyword learning cycle complete (loop_id={loop_id})")
+    
+    return {
+        "status": "completed",
+        "analysis": analysis,
+        "suggestions": suggestions,
+        "action_required": "human_approval" if suggestions['weight_adjustments'] else "none",
+        "loop_id": loop_id
+    }
+
+
+def get_connection():
+    """Import database connection."""
+    from database.db import get_connection as db_get_connection
+    return db_get_connection()

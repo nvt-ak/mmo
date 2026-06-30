@@ -88,3 +88,82 @@ def run(candidates: list[dict]) -> list[dict]:
     follows = [e for e in evaluated if e.get("llm", {}).get("recommendation") == "follow"]
     log.info(f"Evaluate complete: {len(follows)}/{len(evaluated)} recommended to follow")
     return evaluated
+
+
+def evaluate_keyword(keyword: str, channel_id: str = None) -> dict:
+    """
+    Evaluate a keyword for TikTok repost potential.
+    
+    MVP Implementation (Formula 3, locked 2026-06-30):
+    - Uses TikTok saturation check + keyword heuristics
+    - No LLM required for Phase 1-2
+    
+    Args:
+        keyword: Keyword to evaluate
+        channel_id: Optional channel context (unused in MVP)
+    
+    Returns:
+        {
+            "keyword": str,
+            "channel_id": str | None,
+            "score": int (0-100),
+            "reasoning": str
+        }
+    """
+    from services.tiktok_service import check_saturation
+    
+    # Check TikTok saturation
+    try:
+        sat = check_saturation(keyword)
+        status = sat.get("status", "unknown")
+        video_count = sat.get("video_count_7d", 0)
+    except Exception as e:
+        # Fallback if saturation check fails
+        status = "unknown"
+        video_count = 0
+    
+    # Saturation base score
+    if status == "fresh":
+        base = 80
+    elif status == "medium":
+        base = 55
+    elif status == "saturated":
+        base = 25
+    else:
+        base = 50  # unknown/error
+    
+    # Keyword trait adjustments
+    word_count = len(keyword.split())
+    
+    if word_count >= 3:
+        base += 8  # long_tail bonus
+        trait_note = "long-tail keyword (+8)"
+    elif word_count == 1:
+        base -= 10  # too broad penalty
+        trait_note = "single word (-10)"
+    else:
+        trait_note = "2-word keyword (neutral)"
+    
+    # Additional heuristics
+    if "viral" in keyword.lower() or "trending" in keyword.lower():
+        base -= 5  # overused terms penalty
+        trait_note += ", contains viral/trending (-5)"
+    
+    if "tutorial" in keyword.lower() or "how to" in keyword.lower():
+        base += 5  # educational bonus
+        trait_note += ", educational (+5)"
+    
+    # Cap score
+    score = min(100, max(0, base))
+    
+    # Build reasoning
+    reasoning = f"saturation={status} (base={base}), {trait_note}, words={word_count}"
+    
+    log.info(f"Evaluated keyword '{keyword}': score={score}, {reasoning}")
+    
+    return {
+        "keyword": keyword,
+        "channel_id": channel_id,
+        "score": score,
+        "reasoning": reasoning
+    }
