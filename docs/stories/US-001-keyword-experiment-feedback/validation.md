@@ -35,7 +35,7 @@ def test_full_keyword_learning_cycle():
     # 6. Verify strategy.json updated
 ```
 
-**Status:** Phase 4 scope - not implemented yet per execplan.md.
+**Status:** Implemented ✅. 3 integration tests pass for orchestrator cycle, insufficient data, action_required flag.
 
 ## Manual Test Scenarios
 
@@ -56,7 +56,7 @@ def test_full_keyword_learning_cycle():
 3. Verify: Patterns discovered with confidence > 0.6
 4. Verify: Examples listed correctly
 
-**Status:** Phase 2 core logic implemented ✅. Full UX flow pending Phase 3 UI.
+**Status:** Implemented ✅. Patterns extracted and persisted to `keyword_patterns`.
 
 ### Scenario 3: Approval Flow
 1. After learning insights, verify: "Suggested adjustments" shown
@@ -67,7 +67,7 @@ def test_full_keyword_learning_cycle():
 6. Verify: strategy.json updated with new weights
 7. Verify: update_history logged
 
-**Status:** Phase 3 UI scope. Learn agent suggests, Phase 3 provides approval UI.
+**Status:** Implemented ✅. UI approval applies human-approved adjustments.
 
 ### Scenario 4: Reminder Banner
 1. Start experiment with created_at = datetime('now', '-8 days')
@@ -77,7 +77,7 @@ def test_full_keyword_learning_cycle():
 5. Reopen app
 6. Verify: Banner shows "0 experiments ready to report"
 
-**Status:** Phase 3 scope - reminder query implemented, UI banner pending.
+**Status:** Implemented ✅. Reminder banner loads/refreshes in UI.
 
 ### Scenario 5: Baseline Normalization
 1. Start experiment on nano creator (2K avg views)
@@ -104,13 +104,15 @@ def test_full_keyword_learning_cycle():
 - [x] Dataclasses: KeywordExperiment, KeywordPattern created
 - [x] G1 blocker fixed: orchestrator.py:176 no crash
 - [x] G7 blocker fixed: agent_loops created in init_db()
-- [ ] Phase 3: UI tab implemented
-- [ ] Phase 3: Reminder banner functional
-- [ ] Phase 3: Approval dialog with Approve/Reject
+- [x] Phase 3: UI tab implemented
+- [x] Phase 3: Reminder banner functional
+- [x] Phase 3: Approval dialog with Approve/Reject
 - [ ] Manual: 5+ real experiments completed
-- [ ] Phase 4: Learn agent unit tests added
-- [ ] Phase 4: Integration tests for full learning cycle
-- [ ] Phase 4: Weight consumption in evaluate_keyword()
+- [x] Phase 4: Learn agent unit tests added
+- [x] Phase 4: Integration tests for full learning cycle
+- [x] Phase 4: Weight consumption in evaluate_keyword()
+- [x] Phase 4: UI routes learning via orchestrator
+- [x] Phase 4: Qualified patterns persist to `keyword_patterns`
 
 ## Phase Completion Status
 
@@ -118,8 +120,8 @@ def test_full_keyword_learning_cycle():
 |-------|-------|--------|-------|
 | Phase 1 | Schema + migrations | ✅ Complete | All columns, constraints, indexes |
 | Phase 2 | Pattern extraction + suggestions | ✅ Complete | Logic implemented, blockers fixed |
-| Phase 3 | UI + commands | ⏳ Deferred | Commands, approval flow, reminder banner |
-| Phase 4 | Tests + weight loop | ⏳ Deferred | Integration tests, weight consumption |
+| Phase 3 | UI + commands | ✅ Complete | Commands, approval flow, reminder banner |
+| Phase 4 | Tests + weight loop | ✅ Code Complete | 11 tests pass; manual/production validation pending |
 
 **Overall Phase 2 Status:** ✅ **READY FOR MERGE**
 - Blockers G1 (crash), G7 (migration) resolved

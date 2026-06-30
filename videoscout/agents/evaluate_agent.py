@@ -122,13 +122,19 @@ def evaluate_keyword(keyword: str, channel_id: str = None) -> dict:
         status = "unknown"
         video_count = 0
     
+    weights = _load_strategy().get("keyword_scoring_weights", {})
+    search_volume_weight = weights.get("search_volume", 1.0)
+    trend_velocity_weight = weights.get("trend_velocity", 1.0)
+    competition_weight = weights.get("competition", 1.0)
+    seasonality_weight = weights.get("seasonality", 1.0)
+
     # Saturation base score
     if status == "fresh":
-        base = 80
+        base = 50 + (30 * search_volume_weight)
     elif status == "medium":
-        base = 55
+        base = 50 + (5 * search_volume_weight)
     elif status == "saturated":
-        base = 25
+        base = 50 - (25 * search_volume_weight)
     else:
         base = 50  # unknown/error
     
@@ -136,25 +142,29 @@ def evaluate_keyword(keyword: str, channel_id: str = None) -> dict:
     word_count = len(keyword.split())
     
     if word_count >= 3:
-        base += 8  # long_tail bonus
-        trait_note = "long-tail keyword (+8)"
+        delta = 8 * trend_velocity_weight
+        base += delta  # long_tail bonus
+        trait_note = f"long-tail keyword (+{delta:.1f})"
     elif word_count == 1:
-        base -= 10  # too broad penalty
-        trait_note = "single word (-10)"
+        delta = 10 * competition_weight
+        base -= delta  # too broad penalty
+        trait_note = f"single word (-{delta:.1f})"
     else:
         trait_note = "2-word keyword (neutral)"
     
     # Additional heuristics
     if "viral" in keyword.lower() or "trending" in keyword.lower():
-        base -= 5  # overused terms penalty
-        trait_note += ", contains viral/trending (-5)"
+        delta = 5 * search_volume_weight
+        base -= delta  # overused terms penalty
+        trait_note += f", contains viral/trending (-{delta:.1f})"
     
     if "tutorial" in keyword.lower() or "how to" in keyword.lower():
-        base += 5  # educational bonus
-        trait_note += ", educational (+5)"
+        delta = 5 * seasonality_weight
+        base += delta  # educational bonus
+        trait_note += f", educational (+{delta:.1f})"
     
     # Cap score
-    score = min(100, max(0, base))
+    score = round(min(100, max(0, base)))
     
     # Build reasoning
     reasoning = f"saturation={status} (base={base}), {trait_note}, words={word_count}"

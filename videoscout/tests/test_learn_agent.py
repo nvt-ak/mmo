@@ -1,6 +1,6 @@
 """
 Unit tests for learn_agent keyword experiment functions.
-US-001 Phase 2 validation.
+US-001 keyword learning validation.
 """
 import pytest
 import sys
@@ -54,8 +54,6 @@ def test_analyze_insufficient_data(db_conn):
 
 def test_extract_patterns_min_occurrences(db_conn):
     """Test pattern extraction requires min 3 occurrences."""
-    from videoscout.models import classify_outcome
-    
     # Insert 2 experiments with same trait (below threshold)
     for i in range(2):
         exp_id = str(uuid4())
@@ -207,13 +205,6 @@ def test_agent_tracking_separate_accuracy(db_conn):
 
 def test_apply_approved_adjustments(db_conn):
     """Test applying approved weight adjustments."""
-    import os
-    from pathlib import Path
-    
-    # Ensure memory directory exists
-    memory_dir = Path(__file__).parent.parent / "agents" / "memory"
-    memory_dir.mkdir(exist_ok=True)
-    
     adjustments = {
         "search_volume": 0.9,
         "trend_velocity": 1.1
@@ -222,7 +213,7 @@ def test_apply_approved_adjustments(db_conn):
     apply_approved_adjustments(adjustments)
     
     # Load strategy and verify
-    from videoscout.agents.learn_agent import _load_strategy
+    from agents.learn_agent import _load_strategy
     strategy = _load_strategy()
     
     assert strategy['keyword_scoring_weights']['search_volume'] == 0.9

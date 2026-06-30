@@ -61,17 +61,17 @@ videoscout/tests/test_keyword_schema.py::test_pattern_with_adjustment PASSED
 ============================== 12 passed in 0.08s
 ```
 
-### Deferred Items (Not Blockers)
+### Completed Phase 4 Items
 
 Per execplan.md phase boundaries:
 
 | ID | Severity | Description | Target Phase |
 |----|----------|-------------|--------------|
-| G2 | 🟡 | Learn agent unit tests | Phase 4 |
-| G3 | - | Integration tests for full cycle | Phase 4 |
-| G4 | 🔵 | Weight consumption in evaluate_keyword() | Phase 3-4 |
+| G2 | ✅ | Learn agent unit tests | Complete |
+| G3 | ✅ | Integration tests for full cycle | Complete |
+| G4 | ✅ | Weight consumption in evaluate_keyword() | Complete |
 
-**Rationale**: Phase 2 scope = pattern extraction + suggestions + orchestrator integration. Learn agent unit tests and weight consumption are Phase 4 scope per execplan.md.
+**Rationale**: Phase 4 code validation is complete; remaining work requires real experiments/manual E2E.
 
 ---
 
@@ -82,7 +82,7 @@ Per execplan.md phase boundaries:
 | Phase 1: Schema | ✅ Complete | 2026-06-28 |
 | Phase 2: Agent Logic | ✅ Complete | 2026-06-30 |
 | Phase 3: UI | ✅ Complete | 2026-06-30 |
-| Phase 4: Validation | ⏳ Deferred | TBD |
+| Phase 4: Validation | ✅ Code Complete | 2026-07-01 |
 
 ---
 
@@ -97,10 +97,12 @@ Per execplan.md phase boundaries:
 - [ ] Push to remote
 - [ ] Merge to main
 
-### Phase 4 (Future)
-- [ ] Add learn agent unit tests (7 tests per US-001.md)
-- [ ] Add integration test for full learning cycle
-- [ ] Implement weight consumption in evaluate_keyword()
+### Remaining Manual/Production Validation
+- [x] Add learn agent unit tests (8 tests)
+- [x] Add integration test for full learning cycle (3 tests)
+- [x] Implement weight consumption in evaluate_keyword()
+- [x] Route UI learning flow through orchestrator
+- [x] Persist qualified patterns to keyword_patterns
 - [ ] Run 5+ real experiments
 - [ ] Verify pattern discovery in production
 

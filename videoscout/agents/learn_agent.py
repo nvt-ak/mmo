@@ -215,6 +215,7 @@ def analyze_keyword_experiments() -> dict:
     true_positives = [e for e in experiments if e['outcome_type'] == 'true_positive']
     false_positives = [e for e in experiments if e['outcome_type'] == 'false_positive']
     false_negatives = [e for e in experiments if e['outcome_type'] == 'false_negative']
+    _persist_keyword_patterns(conn, patterns)
     
     # Agent-suggested vs manual tracking
     agent_suggested = [e for e in experiments if e['suggestion_source'] == 'agent_suggested']
@@ -249,6 +250,39 @@ def analyze_keyword_experiments() -> dict:
         }
     }
 
+
+def _persist_keyword_patterns(conn, patterns: list):
+    """Persist latest qualified keyword patterns."""
+    from uuid import uuid5, NAMESPACE_URL
+    import json
+
+    for pattern in patterns:
+        trait = pattern["trait"]
+        outcome = pattern["outcome_type"]
+        pattern_type = {
+            "false_positive": "overestimate",
+            "false_negative": "underestimate",
+        }.get(outcome, "correlation")
+        pattern_id = str(uuid5(NAMESPACE_URL, f"{trait}:{outcome}"))
+        insight = f"{trait} correlated with {outcome} ({pattern['count']} occurrences)"
+        conn.execute("""
+            INSERT OR REPLACE INTO keyword_patterns
+            (id, pattern_type, keyword_trait, outcome_type, insight, example_keywords,
+             occurrence_count, avg_predicted, avg_actual, confidence, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        """, (
+            pattern_id,
+            pattern_type,
+            trait,
+            outcome,
+            insight,
+            json.dumps(pattern.get("examples", [])),
+            pattern["count"],
+            pattern.get("avg_predicted"),
+            pattern.get("avg_actual"),
+            pattern["confidence"],
+        ))
+    conn.commit()
 
 def _extract_patterns(experiments: list) -> list:
     """

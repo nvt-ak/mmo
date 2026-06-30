@@ -185,6 +185,7 @@ def run_keyword_learning_cycle() -> dict:
         datetime.now().isoformat()
     )).fetchone()['id']
     conn.commit()
+    conn.close()
     
     log.info(f"Keyword learning cycle complete (loop_id={loop_id})")
     

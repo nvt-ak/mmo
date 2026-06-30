@@ -1,15 +1,20 @@
 {
   "version": 1,
   "keywords": [
-    "kpop fancam",
-    "music bank fancam",
-    "4th gen kpop",
-    "idol dance",
     "inkigayo stage",
-    "concert fancam",
     "kpop dance cover",
+    "kpop choreography breakdown",
+    "kpop idol reaction",
+    "4th gen kpop",
+    "kpop stage",
+    "idol dance",
+    "kpop fancam",
     "dance practice mirrored",
-    "kpop stage"
+    "idol survival show performance",
+    "mirrored dance tutorial kpop",
+    "music bank fancam",
+    "concert fancam",
+    "music show stage cam"
   ],
   "exclude_keywords": [],
   "filters": {
@@ -38,7 +43,7 @@
     "cron_hour": 6,
     "cron_minute": 0
   },
-  "last_updated": "2026-07-01T00:51:02.420581",
+  "last_updated": "2026-07-01T03:35:19.480968",
   "update_history": [
     {
       "timestamp": "2026-07-01T00:51:02.420540",
@@ -49,6 +54,18 @@
           "music bank fancam",
           "inkigayo stage",
           "kpop dance cover"
+        ]
+      }
+    },
+    {
+      "timestamp": "2026-07-01T03:35:19.480949",
+      "changes": {
+        "keywords": [
+          "kpop idol reaction",
+          "mirrored dance tutorial kpop",
+          "music show stage cam",
+          "kpop choreography breakdown",
+          "idol survival show performance"
         ]
       }
     }

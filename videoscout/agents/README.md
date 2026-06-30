@@ -157,6 +157,16 @@ CREATE TABLE agent_loops (
 - Can rollback by editing `memory/strategy.json` manually
 - LLM errors are logged, never crash the loop
 
+## Keyword Learning Cycle
+
+`orchestrator.run_keyword_learning_cycle()` closes the US-001 feedback loop:
+- analyzes completed `keyword_experiments`
+- persists qualified patterns to `keyword_patterns`
+- saves the cycle audit record to `agent_loops`
+- returns scoring-weight suggestions for human approval
+
+Approved weights are applied via `learn_agent.apply_approved_adjustments()` and consumed by `evaluate_agent.evaluate_keyword()`.
+
 ## Performance
 
 - Discovery cycle: ~5-10 minutes for 50 channels (YouTube API quota: ~200 units)

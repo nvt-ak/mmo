@@ -149,9 +149,13 @@ python -m pytest videoscout/tests/test_learn_agent.py -v
 - `run_keyword_learning_cycle()` integrated in orchestrator
 - Saves loop record to `agent_loops` table
 - Returns analysis + suggestions + action_required flag
-- 8 unit tests + 3 integration tests passing (11 total)
+- 8 unit tests + 3 integration tests passing (11 total, both PYTHONPATH contexts)
+- Weight consumption: `evaluate_keyword()` reads `keyword_scoring_weights` from strategy
+- UI orchestrator path: `show_insights()` calls `run_keyword_learning_cycle()`
+- Pattern persistence: qualified patterns saved to `keyword_patterns` table
+- Connection leak fixed: orchestrator closes conn after INSERT
 
 **Pending (Validation):**
-- 5+ real experiments completed
-- Pattern discovery verified in production
-- Weight adjustment workflow tested
+- Manual E2E: 5 scenarios (baseline normalization, agent tracking, approval flow, pattern extraction, reminder banner)
+- Production: 5+ real experiments, pattern discovery verification, weight adjustment workflow
+- Docs: Create `agent-learning-system.md`, `keyword-experiments.md`; update `agents/README.md`

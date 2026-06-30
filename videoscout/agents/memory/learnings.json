@@ -119,14 +119,20 @@
       "summary": "Based on the data, here are the key patterns:\n\n1. **High engagement rate matters more than subscriber count.** IDL (42K subs, 37.5K avg score) was the only follow despite channels like SonicAwareness (33.9K subs, 1.8K avg score) having similar subscriber counts. The engagement-to-subscriber ratio at IDL is ~89%, which is exceptionally high.\n\n2. **Prioritize channels with high video counts AND high avg_score.** IDL had 50 videos with 37.5K average, KPOP DANCE COVER had 50 videos but 0.0 average. Volume without engagement is worthless. Look for channels consistently posting 25+ videos with avg_score >15K.\n\n3. **Avoid niche/localized channels.** Channels with regional focus (CHEGO with Japanese text, Anh T\u00fa's, LenaParkTV) show poor engagement (0-1.5K avg). Stick to broader international appeal channels.\n\n4. **Skip low sample sizes.** Channels with <10 videos found (LenaParkTV: 2, Olivier: 3, Max's: 1) provide unreliable signals regardless of score. Set a minimum threshold of 10+ videos for evaluation.\n\n5. **Target dance studios and performance venues over pure fancam aggregators.** \"IDL: international dance league\" and \"IDOL DANCE STUDIO\" suggest performance-focused content outperforms passive concert recordings. Search for \"dance studio,\" \"dance league,\" and \"performance\" keywords.",
       "successful_count": 1,
       "failed_count": 13
+    },
+    {
+      "timestamp": "2026-07-01T03:34:57.968116",
+      "summary": "- Follow winner = `IDL`: subs 42.1k + videos_found 50 + avg_score 37.5k \u2192 best combo. Look for mid-size/high-volume channels with many qualifying clips + consistently high scores.\n\n- High avg_score alone \u2260 enough: `KpopFanCam` 22.5k, `KPOP Focus Stage` 22.4k, `Olivier` 14.1k still skipped \u2192 likely rights/format/niche/quality issue. Don\u2019t rank on score only; require TikTok-fit clips.\n\n- Avoid low inventory: videos_found `<5` mostly bad/skip (`LenaParkTV`, `Olivier`, `Happy Learning Yoga`, `Max`) \u2192 not enough repostable volume. Set floor: `videos_found >= 25`, ideally `50`.\n\n- Avoid generic/low-signal fancam channels: many \u201cFancam Singer Live Concert\u201d / generic Kpop names scored low or skipped \u2192 prefer organized dance/event/stage league channels over random concert fancams.\n\n- Look for more: dance competitions/leagues/studios with clear full-body choreography, repeat events, clean framing, high clip volume, avg_score `>20k`, subs `10k\u201350k`.",
+      "successful_count": 1,
+      "failed_count": 13
     }
   ],
   "keyword_suggestions": [
-    "4th gen kpop",
-    "dance practice mirrored",
-    "music bank fancam",
-    "inkigayo stage",
-    "kpop dance cover"
+    "kpop idol reaction",
+    "mirrored dance tutorial kpop",
+    "music show stage cam",
+    "kpop choreography breakdown",
+    "idol survival show performance"
   ],
-  "last_updated": "2026-07-01T00:50:54.977420"
+  "last_updated": "2026-07-01T03:34:57.968165"
 }

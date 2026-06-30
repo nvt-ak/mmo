@@ -14,7 +14,7 @@ from PyQt6.QtGui import QFont
 
 from database.db import get_connection
 from models import compute_actual_score, classify_outcome, compute_accuracy
-from agents.learn_agent import analyze_keyword_experiments, suggest_scoring_adjustments
+from agents.orchestrator import run_keyword_learning_cycle
 from agents.evaluate_agent import evaluate_keyword
 from utils.logger import get_logger
 
@@ -398,14 +398,15 @@ class KeywordExperimentsTab(QWidget):
         dialog.exec()
     
     def show_insights(self):
-        analysis = analyze_keyword_experiments()
+        result = run_keyword_learning_cycle()
         
-        if analysis['status'] == 'insufficient_data':
+        if result['status'] == 'insufficient_data':
             QMessageBox.information(self, "Insufficient Data",
-                f"Need 5+ experiments. Current: {analysis['stats']['total']}")
+                result['message'])
             return
         
-        suggestions = suggest_scoring_adjustments(analysis['patterns'])
+        analysis = result['analysis']
+        suggestions = result['suggestions']
         dialog = LearningInsightsDialog(analysis, suggestions, self)
         
         if dialog.exec() == QDialog.DialogCode.Accepted:

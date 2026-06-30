@@ -51,11 +51,13 @@
 - Reminder banner displays correctly
 - Approval workflow working
 
-### Phase 4: Validation (TODO)
-- Add integration tests
-- Run 5+ real experiments
-- Verify pattern discovery
-- Verify weight adjustment application
+### Phase 4: Validation (CODE COMPLETE)
+- Integration tests added and passing
+- `run_keyword_learning_cycle()` saves `agent_loops`
+- UI insight flow routes through orchestrator
+- `evaluate_keyword()` consumes approved `keyword_scoring_weights`
+- Qualified patterns persist to `keyword_patterns`
+- Pending: 5+ real experiments, production pattern discovery, manual E2E
 
 ---
 
