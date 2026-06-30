@@ -1,0 +1,132 @@
+{
+  "patterns": [
+    {
+      "timestamp": "2026-06-30T22:34:48.770045",
+      "summary": "Summary failed: Client.__init__() got an unexpected keyword argument 'proxies'",
+      "successful_count": 0,
+      "failed_count": 14
+    },
+    {
+      "timestamp": "2026-06-30T22:35:16.734850",
+      "summary": "Summary failed: Client.__init__() got an unexpected keyword argument 'proxies'",
+      "successful_count": 0,
+      "failed_count": 16
+    },
+    {
+      "timestamp": "2026-06-30T22:51:04.710987",
+      "summary": "Summary failed: Client.__init__() got an unexpected keyword argument 'proxies'",
+      "successful_count": 0,
+      "failed_count": 16
+    },
+    {
+      "timestamp": "2026-06-30T22:52:46.774805",
+      "summary": "Summary failed: Client.__init__() got an unexpected keyword argument 'proxies'",
+      "successful_count": 0,
+      "failed_count": 16
+    },
+    {
+      "timestamp": "2026-06-30T22:53:39.871717",
+      "summary": "Summary failed: Client.__init__() got an unexpected keyword argument 'proxies'",
+      "successful_count": 0,
+      "failed_count": 16
+    },
+    {
+      "timestamp": "2026-06-30T23:29:34.486504",
+      "summary": "Pattern analysis failed - LLM unavailable",
+      "successful_count": 0,
+      "failed_count": 16
+    },
+    {
+      "timestamp": "2026-06-30T23:35:25.389441",
+      "summary": "Pattern analysis failed - LLM unavailable",
+      "successful_count": 0,
+      "failed_count": 16
+    },
+    {
+      "timestamp": "2026-06-30T23:37:07.375231",
+      "summary": "Pattern analysis failed - LLM unavailable",
+      "successful_count": 0,
+      "failed_count": 16
+    },
+    {
+      "timestamp": "2026-06-30T23:41:15.892965",
+      "summary": "Pattern analysis failed - LLM unavailable",
+      "successful_count": 0,
+      "failed_count": 16
+    },
+    {
+      "timestamp": "2026-06-30T23:42:44.783444",
+      "summary": "Pattern analysis failed - LLM unavailable",
+      "successful_count": 0,
+      "failed_count": 17
+    },
+    {
+      "timestamp": "2026-06-30T23:47:38.559745",
+      "summary": "- Analyzed 17 channels: 0 follow, 17 skip (LLM unavailable \u2014 stats only)\n- Subscriber range: 1,390 \u2013 42,100 (avg 14,300)\n- Avg video score range: 10 \u2013 157243\n- No successful channels yet \u2014 re-run Discovery with LLM enabled",
+      "successful_count": 0,
+      "failed_count": 17
+    },
+    {
+      "timestamp": "2026-06-30T23:50:13.882933",
+      "summary": "- Analyzed 17 channels: 0 follow, 17 skip (LLM unavailable \u2014 stats only)\n- Subscriber range: 1,390 \u2013 42,100 (avg 14,300)\n- Avg video score range: 10 \u2013 157243\n- No successful channels yet \u2014 re-run Discovery with LLM enabled",
+      "successful_count": 0,
+      "failed_count": 17
+    },
+    {
+      "timestamp": "2026-06-30T23:50:38.118724",
+      "summary": "* High `videos_found` + high `avg_score` \u2192 target high-volume, high-engagement niches (e.g., IDL).\n* Low `videos_found` \u2192 noise; skip channels with < 20 videos.\n* `avg_score` < 5000 \u2192 low virality potential; ignore.\n* Strategy: Filter for `videos_found` > 40 AND `avg_score` > 30,000.",
+      "successful_count": 0,
+      "failed_count": 17
+    },
+    {
+      "timestamp": "2026-06-30T23:51:33.449177",
+      "summary": "- Analyzed 17 channels: 0 follow, 17 skip (LLM unavailable \u2014 stats only)\n- Subscriber range: 1,390 \u2013 42,100 (avg 14,300)\n- Avg video score range: 10 \u2013 157243\n- No successful channels yet \u2014 re-run Discovery with LLM enabled",
+      "successful_count": 0,
+      "failed_count": 17
+    },
+    {
+      "timestamp": "2026-06-30T23:58:32.272261",
+      "summary": "Looking at this data, all channels resulted in \"skip\" outcomes, which suggests the strategy isn't working. Here are the patterns:\n\n**Key findings:**\n\n- **High video count doesn't guarantee quality** - Channels with 25-50 videos (K-POP ARENA, IDL, KPOP Focus Stage, KPOP FANCAM) show wildly inconsistent avg_scores (6,778 to 157,243), suggesting volume alone isn't predictive of repost success.\n\n- **Mid-range subscriber counts (10K-40K) with decent engagement show promise** - K-POP ARENA (1,390 subs, 157K avg_score) and IDL (42,100 subs, 38K avg_score) have the highest engagement rates, indicating niche, engaged audiences may perform better than large generic ones.\n\n- **Avoid generalist/multi-topic channels** - \"Happy Learning Yoga\" and channels with vague positioning (multiple concert/music/singer keywords) show poor scores relative to their sub counts, suggesting diluted audience interest.\n\n- **The entire strategy needs re-evaluation** - 100% skip rate across 17 channels indicates your selection criteria or scoring threshold is off. Either lower the bar, or pivot to channels with proven TikTok-style short-form content rather than traditional YouTube fancam channels.",
+      "successful_count": 0,
+      "failed_count": 17
+    },
+    {
+      "timestamp": "2026-07-01T00:00:00.327381",
+      "summary": "Looking at this data, all channels resulted in \"skip\" outcomes, which suggests none met your threshold criteria. Here are the key patterns:\n\n**What correlates with higher engagement potential:**\n- **Higher avg_score with sufficient volume**: K-POP ARENA (157K avg_score, 31 videos) and IDL (38.5K avg_score, 50 videos) show the best engagement despite being skipped. Channels with 20K+ avg_score and 15+ videos indicate an active, engaged audience worth investigating further.\n\n**What to look for more of:**\n- **Channels with 30-50 videos found**: Maximum sample size (K-POP ARENA, IDL, KPOP Focus Stage, KPOP FANCAM) provides better data reliability. Single-video channels (idol dance, Max's Kpop Fancam) are too risky to evaluate.\n- **Mid-tier subscriber counts (10K-40K) with disproportionately high avg_scores**: These channels have loyal niches. SonicAwareness (33.9K subs, 1.8K score) underperforms relative to Kpop mimo (36.1K subs, 24K score).\n\n**What to avoid:**\n- **Low video count channels (<5 videos)**: Unreliable data and likely inactive or inconsistent uploaders.\n- **Channels where avg_score is under 1K regardless of sub count**: Happy Learning Yoga, idol dance, and IDOL DANCE STUDIO show poor engagement ratios indicating content mismatch or inactive audiences.\n\n**Action item**: Investigate why ALL channels were skipped. If your threshold is above 157K avg_score, you may be filtering too aggressively and missing viable channels.",
+      "successful_count": 0,
+      "failed_count": 17
+    },
+    {
+      "timestamp": "2026-07-01T00:04:40.373496",
+      "summary": "Looking at this data, every single channel resulted in \"skip\" - meaning none met your success criteria. Here's what the patterns reveal:\n\n**Key findings:**\n\n- **High video volume doesn't guarantee quality** - Channels with 50 videos (IDL, KPOP Focus Stage, KPOP FANCAM) still got skipped despite decent avg_scores (38K, 21K, 6.7K). Your threshold for \"good\" must be significantly higher than these numbers.\n\n- **Avoid generalist fancam aggregators** - Channels with \"Fancam\" in the name and broad coverage (KpopFanCam, LenaParkTV, Max's Kpop Fancam, Anh T\u00fa's Fancam) consistently underperform relative to their sub counts. They're diluting quality with quantity.\n\n- **Target specialty performance channels over raw footage dumps** - The highest avg_score (157K from K-POP ARENA with 31 videos) came from a smaller channel, but even that wasn't enough. Look for channels that curate specific events, dance competitions, or have editorial focus rather than just uploading every fancam they capture.\n\n- **Sub count is a poor predictor** - Channels ranging from 1,390 to 42,100 subs all failed. Focus your filtering criteria on engagement metrics (avg_score relative to video count) and content specificity instead of subscriber base.\n\n**Recommendation:** Share what your success threshold actually is (what avg_score or outcome would be \"keep\"?) so we can reverse-engineer what type of content actually works for TikTok reposts.",
+      "successful_count": 0,
+      "failed_count": 17
+    },
+    {
+      "timestamp": "2026-07-01T00:40:15.628683",
+      "summary": "Looking at the data, only one channel (IDL: international dance league) was marked as \"follow\" despite many channels having higher avg_scores. Here are the patterns:\n\n**Key findings:**\n\n- **IDL won despite not having the highest score** (37.5K avg vs K-POP ARENA's 157K). The deciding factor appears to be **consistent volume + sustained engagement**: 50 videos with strong average performance beats sporadic viral hits.\n\n- **High subscriber counts don't predict success**. SonicAwareness (33.9K subs) and Olivier Robelot (34.3K subs) were skipped despite decent audiences. Small channels like K-POP ARENA (1.39K subs) can have explosive scores but still get skipped\u2014likely inconsistent or non-replicable content.\n\n- **Avoid low-volume channels** (under ~10 videos found) even if subscribers or scores look decent. They lack enough signal to confirm the content strategy works reliably for TikTok reposts.\n\n- **Target: 30-50 videos uploaded, 10K+ avg_score, 5K+ subscribers**. This combo suggests an active channel with proven repost-friendly content that generates consistent engagement, not just one-off virality.",
+      "successful_count": 1,
+      "failed_count": 16
+    },
+    {
+      "timestamp": "2026-07-01T00:44:19.862262",
+      "summary": "Based on this data, here's what stands out:\n\n**Key patterns:**\n\n1. **High avg_score is necessary but not sufficient** \u2014 IDL (37,505.7) got a follow, but KpopFanCam (22,464.2) and KPOP Focus Stage (22,374.3) were skipped despite strong scores. The deciding factor appears to be **consistent high performance across many videos** (IDL had 50 videos at that average).\n\n2. **Avoid channels with extremely low engagement relative to subs** \u2014 KPOP DANCE COVER (8,830 subs, 0.0 avg_score) and channels under 1,000 avg_score with 5K+ subs suggest dead audiences or irrelevant content that won't convert.\n\n3. **Sample size matters for confidence** \u2014 Channels with <10 videos analyzed were all skipped, even with decent scores (Olivier: 14,150 avg from only 3 videos). Look for channels with **20+ videos and avg_score >15,000** to find reliable performers.\n\n4. **The winner had both volume and quality** \u2014 IDL combined maximum video count (50) with the highest avg_score by far (37,505.7). This suggests their content format or niche has proven, repeatable virality. Prioritize channels that demonstrate **sustained high performance, not one-hit wonders**.",
+      "successful_count": 1,
+      "failed_count": 13
+    },
+    {
+      "timestamp": "2026-07-01T00:50:54.977383",
+      "summary": "Based on the data, here are the key patterns:\n\n1. **High engagement rate matters more than subscriber count.** IDL (42K subs, 37.5K avg score) was the only follow despite channels like SonicAwareness (33.9K subs, 1.8K avg score) having similar subscriber counts. The engagement-to-subscriber ratio at IDL is ~89%, which is exceptionally high.\n\n2. **Prioritize channels with high video counts AND high avg_score.** IDL had 50 videos with 37.5K average, KPOP DANCE COVER had 50 videos but 0.0 average. Volume without engagement is worthless. Look for channels consistently posting 25+ videos with avg_score >15K.\n\n3. **Avoid niche/localized channels.** Channels with regional focus (CHEGO with Japanese text, Anh T\u00fa's, LenaParkTV) show poor engagement (0-1.5K avg). Stick to broader international appeal channels.\n\n4. **Skip low sample sizes.** Channels with <10 videos found (LenaParkTV: 2, Olivier: 3, Max's: 1) provide unreliable signals regardless of score. Set a minimum threshold of 10+ videos for evaluation.\n\n5. **Target dance studios and performance venues over pure fancam aggregators.** \"IDL: international dance league\" and \"IDOL DANCE STUDIO\" suggest performance-focused content outperforms passive concert recordings. Search for \"dance studio,\" \"dance league,\" and \"performance\" keywords.",
+      "successful_count": 1,
+      "failed_count": 13
+    }
+  ],
+  "keyword_suggestions": [
+    "4th gen kpop",
+    "dance practice mirrored",
+    "music bank fancam",
+    "inkigayo stage",
+    "kpop dance cover"
+  ],
+  "last_updated": "2026-07-01T00:50:54.977420"
+}

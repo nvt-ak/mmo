@@ -1,0 +1,136 @@
+"""
+LLM Skills — 9router OpenAI-compatible client.
+Uses local 9router proxy for channel evaluation + keyword suggestions.
+"""
+import json
+import os
+from openai import OpenAI
+from utils.logger import get_logger
+
+log = get_logger("llm")
+
+_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:20128/v1")
+_API_KEY = os.getenv("LLM_API_KEY", "sk-local")
+_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+
+
+def _client() -> OpenAI:
+    return OpenAI(base_url=_BASE_URL, api_key=_API_KEY)
+
+
+def evaluate_channel(channel: dict, videos: list[dict]) -> dict:
+    """
+    Ask LLM to evaluate a channel for TikTok repost suitability.
+    Returns: {score: 0-10, niche_fit: bool, risk: str, recommendation: str, reasoning: str}
+    """
+    titles = "\n".join(f"- {v['title']} ({v['view_count']:,} views)" for v in videos[:10])
+    prompt = f"""You are a TikTok content scout evaluating YouTube channels.
+
+Channel: {channel.get('name', 'Unknown')}
+Subscribers: {channel.get('subscribers', 0):,}
+Niche tag: {channel.get('niche_tag', 'unknown')}
+
+Recent video titles:
+{titles}
+
+Evaluate this channel for TikTok repost suitability:
+1. niche_fit (bool): Is content idol/kpop/dance focused?
+2. risk (low/medium/high): Copyright risk level?
+3. score (0-10): Repost potential?
+4. recommendation (follow/skip): Overall recommendation?
+5. reasoning (1-2 sentences): Why?
+
+Respond in strict JSON:
+{{"niche_fit": bool, "risk": "low|medium|high", "score": 0-10, "recommendation": "follow|skip", "reasoning": "..."}}"""
+
+    try:
+        resp = _client().chat.completions.create(
+            model=_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=300,
+        )
+        text = resp.choices[0].message.content.strip()
+        # extract JSON from response
+        if "{" in text:
+            text = text[text.index("{"):text.rindex("}") + 1]
+        result = json.loads(text)
+        log.info(f"LLM evaluate: {channel.get('name')} → score={result.get('score')} rec={result.get('recommendation')}")
+        return result
+    except Exception as e:
+        log.error(f"LLM evaluate error: {e}")
+        return {"niche_fit": None, "risk": "unknown", "score": None, "recommendation": "skip", "reasoning": str(e)}
+
+
+def suggest_keywords(successful_channels: list[dict], current_keywords: list[str]) -> list[str]:
+    """
+    Ask LLM to suggest new keywords based on what's working.
+    """
+    channel_summary = "\n".join(
+        f"- {ch['name']} ({ch.get('subscribers', 0):,} subs, score={ch.get('score', 0)})"
+        for ch in successful_channels[:15]
+    )
+    current = ", ".join(current_keywords)
+    prompt = f"""You are a YouTube/TikTok content strategist.
+
+Current keywords: {current}
+
+Channels performing well:
+{channel_summary}
+
+Suggest 3-5 NEW keywords (not duplicates) that could find similar or better channels.
+Focus on specific idol names, dance styles, or content types.
+
+Respond as JSON array of strings: ["keyword1", "keyword2", ...]"""
+
+    try:
+        resp = _client().chat.completions.create(
+            model=_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=200,
+        )
+        text = resp.choices[0].message.content.strip()
+        if "[" in text:
+            text = text[text.index("["):text.rindex("]") + 1]
+        suggestions = json.loads(text)
+        log.info(f"LLM keyword suggestions: {suggestions}")
+        return suggestions
+    except Exception as e:
+        log.error(f"LLM suggest_keywords error: {e}")
+        return []
+
+
+def summarize_outcomes(outcomes: list[dict]) -> str:
+    """
+    Ask LLM to summarize channel outcomes and identify patterns.
+    """
+    summary = "\n".join(
+        f"- {o.get('name', '?')}: subs={o.get('subscribers', 0):,}, "
+        f"videos_found={o.get('videos_found', 0)}, "
+        f"avg_score={o.get('avg_video_score', 0):.1f}, "
+        f"outcome={o.get('outcome', 'unknown')}"
+        for o in outcomes[:20]
+    )
+    prompt = f"""Analyze these YouTube channel outcomes for TikTok repost strategy:
+
+{summary}
+
+Identify patterns:
+1. What channel characteristics correlate with good results?
+2. What should we look for more of?
+3. What should we avoid?
+
+Respond in 3-5 bullet points, be specific and actionable."""
+
+    try:
+        resp = _client().chat.completions.create(
+            model=_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            max_tokens=500,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        log.error(f"LLM summarize error: {e}")
+        return f"Summary failed: {e}"

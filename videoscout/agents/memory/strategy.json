@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "keywords": [
+    "kpop fancam",
+    "music bank fancam",
+    "4th gen kpop",
+    "idol dance",
+    "inkigayo stage",
+    "concert fancam",
+    "kpop dance cover",
+    "dance practice mirrored",
+    "kpop stage"
+  ],
+  "exclude_keywords": [],
+  "filters": {
+    "min_subs": 1000,
+    "max_subs": 50000,
+    "min_views": 50000,
+    "max_views": 300000,
+    "max_days": 30,
+    "max_duration_sec": 180,
+    "min_upload_freq_per_week": 2
+  },
+  "weights": {
+    "recency": 0.35,
+    "view_sweet_spot": 0.25,
+    "channel_size": 0.2,
+    "engagement_ratio": 0.15,
+    "tiktok_gap": 0.05
+  },
+  "llm": {
+    "enabled": true,
+    "evaluate_channel": true,
+    "suggest_keywords": true
+  },
+  "schedule": {
+    "enabled": true,
+    "cron_hour": 6,
+    "cron_minute": 0
+  },
+  "last_updated": "2026-07-01T00:51:02.420581",
+  "update_history": [
+    {
+      "timestamp": "2026-07-01T00:51:02.420540",
+      "changes": {
+        "keywords": [
+          "4th gen kpop",
+          "dance practice mirrored",
+          "music bank fancam",
+          "inkigayo stage",
+          "kpop dance cover"
+        ]
+      }
+    }
+  ]
+}
