@@ -45,6 +45,8 @@ class KeywordExperimentsTab(QWidget):
             background-color: #fbbf24; color: #78350f; padding: 12px;
             border-radius: 6px; font-weight: bold;
         """)
+        self.reminder_banner.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reminder_banner.mousePressEvent = lambda e: self._show_reminder_details()
         self.reminder_banner.hide()
         layout.addWidget(self.reminder_banner)
         
@@ -90,11 +92,26 @@ class KeywordExperimentsTab(QWidget):
         self.table.setHorizontalHeaderLabels([
             "Keyword", "Channel", "Predicted", "Actual", "Status", "Accuracy", "Rating", "Days"
         ])
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setStyleSheet("QTableWidget { background: #0f172a; color: #f1f5f9; gridline-color: #1e293b; }")
         table_layout.addWidget(self.table)
         layout.addWidget(table_frame)
         
         self.setLayout(layout)
+    
+    def _show_reminder_details(self):
+        """Show list of pending experiments when banner clicked."""
+        conn = get_connection()
+        pending = conn.execute("""
+            SELECT keyword, created_at FROM keyword_experiments
+            WHERE test_status = 'in_progress'
+            AND julianday('now') - julianday(created_at) >= 7
+        """).fetchall()
+        conn.close()
+        
+        if pending:
+            items = '\n'.join(f"- {r['keyword']} ({r['created_at'][:10]})" for r in pending)
+            QMessageBox.information(self, "Pending Experiments", items)
     
     def check_pending_reminders(self):
         conn = get_connection()
@@ -125,8 +142,14 @@ class KeywordExperimentsTab(QWidget):
         self.table.setRowCount(len(rows))
         
         for i, row in enumerate(rows):
-            self.table.setItem(i, 0, QTableWidgetItem(row['keyword']))
-            channel_name = row['channel_name'] or row.get('account_label') or '-'
+            # FIX G1: Set UserRole data
+            item = QTableWidgetItem(row['keyword'])
+            item.setData(Qt.ItemDataRole.UserRole, row['id'])
+            self.table.setItem(i, 0, item)
+            
+            # FIX G2: Use dict() or direct index, not .get()
+            row_dict = dict(row)
+            channel_name = row_dict['channel_name'] or row_dict.get('account_label') or '-'
             self.table.setItem(i, 1, QTableWidgetItem(channel_name))
             self.table.setItem(i, 2, QTableWidgetItem(str(row['predicted_score'])))
             self.table.setItem(i, 3, QTableWidgetItem(str(row['actual_score'] or '-')))
@@ -153,7 +176,8 @@ class KeywordExperimentsTab(QWidget):
         
         completed = [r for r in rows if r['test_status'] in ('success', 'failed', 'partial')]
         if completed:
-            avg_acc = sum(r['accuracy'] for r in completed if r['accuracy']) / len(completed)
+            completed_list = [r for r in completed if r['accuracy']]
+            avg_acc = (sum(r['accuracy'] for r in completed_list) / len(completed_list)) if completed_list else 0
             success_rate = len([r for r in completed if r['test_status'] == 'success']) / len(completed)
             self.stats_label.setText(f"Total: {len(rows)} | Completed: {len(completed)} | "
                                     f"Success: {success_rate*100:.0f}% | Acc: {avg_acc*100:.0f}%")
@@ -252,6 +276,7 @@ class KeywordExperimentsTab(QWidget):
             
             dialog.accept()
             self.load_experiments()
+            self.check_pending_reminders()
             QMessageBox.information(self, "Success", "Experiment started!")
         
         btn_start.clicked.connect(on_start)
@@ -265,6 +290,10 @@ class KeywordExperimentsTab(QWidget):
             return
         
         exp_id = self.table.item(selected, 0).data(Qt.ItemDataRole.UserRole)
+        if not exp_id:
+            QMessageBox.warning(self, "Error", "Experiment ID not found")
+            return
+        
         conn = get_connection()
         exp = conn.execute("SELECT * FROM keyword_experiments WHERE id = ?", (exp_id,)).fetchone()
         conn.close()
@@ -273,9 +302,11 @@ class KeywordExperimentsTab(QWidget):
             QMessageBox.warning(self, "Error", "Experiment not found or already completed")
             return
         
+        exp = dict(exp)  # FIX G2: Convert to dict for .get() support
+        
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Report: {exp['keyword']}")
-        dialog.resize(500, 450)
+        dialog.resize(500, 500)
         
         layout = QVBoxLayout()
         
@@ -302,6 +333,18 @@ class KeywordExperimentsTab(QWidget):
         engagement_input.setValue(exp.get('actual_engagement', 0) or 0)
         layout.addWidget(engagement_input)
         
+        layout.addWidget(QLabel("Retention % (optional):"))
+        retention_input = QDoubleSpinBox()
+        retention_input.setRange(0, 100)
+        retention_input.setValue(exp.get('actual_retention', 0) or 0)
+        layout.addWidget(retention_input)
+        
+        layout.addWidget(QLabel("Comments (optional):"))
+        comments_input = QTextEdit()
+        comments_input.setPlaceholderText("Any additional insights?")
+        comments_input.setMaximumHeight(80)
+        layout.addWidget(comments_input)
+        
         layout.addWidget(QLabel("Rating:"))
         rating_input = QSpinBox()
         rating_input.setRange(1, 5)
@@ -323,28 +366,31 @@ class KeywordExperimentsTab(QWidget):
             test_status = 'success' if status_success.isChecked() else 'partial' if status_partial.isChecked() else 'failed'
             actual_views = views_input.value()
             actual_engagement = engagement_input.value()
+            actual_retention = retention_input.value() if retention_input.value() > 0 else None
+            user_comments = comments_input.toPlainText()
             user_rating = rating_input.value()
             
-            creator_avg_views = exp['creator_avg_views'] or 2000
-            actual_score = compute_actual_score(actual_views, creator_avg_views, actual_engagement)
+            creator_avg_views = exp.get('creator_avg_views', 2000) or 2000
+            actual_score = compute_actual_score(actual_views, creator_avg_views, actual_engagement, actual_retention)
             accuracy = compute_accuracy(exp['predicted_score'], actual_score)
             outcome_type = classify_outcome(exp['predicted_score'], test_status)
             
             conn = get_connection()
             conn.execute("""
                 UPDATE keyword_experiments
-                SET actual_views = ?, actual_engagement = ?, actual_score = ?,
-                    views_vs_baseline = ?, test_status = ?, user_rating = ?,
+                SET actual_views = ?, actual_engagement = ?, actual_retention = ?, actual_score = ?,
+                    views_vs_baseline = ?, test_status = ?, user_rating = ?, user_comments = ?,
                     accuracy = ?, outcome_type = ?, reported_at = datetime('now')
                 WHERE id = ?
-            """, (actual_views, actual_engagement, actual_score,
-                  actual_views / creator_avg_views, test_status, user_rating,
+            """, (actual_views, actual_engagement, actual_retention, actual_score,
+                  actual_views / creator_avg_views, test_status, user_rating, user_comments,
                   accuracy, outcome_type, exp_id))
             conn.commit()
             conn.close()
             
             dialog.accept()
             self.load_experiments()
+            self.check_pending_reminders()  # FIX G5: Refresh reminder banner
             QMessageBox.information(self, "Success", f"Reported! Accuracy: {accuracy*100:.1f}%, Outcome: {outcome_type}")
         
         btn_submit.clicked.connect(on_submit)
@@ -387,8 +433,10 @@ class LearningInsightsDialog(QDialog):
 <li>False Positives: {stats['false_positives']}</li>
 <li>False Negatives: {stats['false_negatives']}</li>
 <li>Avg Accuracy: {stats['avg_accuracy']*100:.1f}%</li>
-</ul>
 """
+        if stats.get('agent_accuracy'):
+            stats_html += f"<li>Agent Suggestion Accuracy: {stats['agent_accuracy']*100:.1f}%</li>"
+        stats_html += "</ul>"
         stats_label = QLabel(stats_html)
         stats_label.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(stats_label)
@@ -400,6 +448,14 @@ class LearningInsightsDialog(QDialog):
         patterns_label = QLabel(patterns_html)
         patterns_label.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(patterns_label)
+        
+        # LLM insights (FIX G4)
+        if self.analysis.get('llm_insights'):
+            llm_html = f"<h2>AI Insights</h2><p>{self.analysis['llm_insights']}</p>"
+            llm_label = QLabel(llm_html)
+            llm_label.setTextFormat(Qt.TextFormat.RichText)
+            llm_label.setWordWrap(True)
+            layout.addWidget(llm_label)
         
         if self.suggestions['weight_adjustments']:
             sug_html = "<h2>Suggested Adjustments (Requires Approval)</h2><ul>"
@@ -435,4 +491,4 @@ class LearningInsightsDialog(QDialog):
         
         self.setLayout(layout)
         self.setWindowTitle("Learning Insights")
-        self.resize(600, 500)
+        self.resize(600, 550)

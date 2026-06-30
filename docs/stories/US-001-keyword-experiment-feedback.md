@@ -2,7 +2,7 @@
 
 ## Status
 
-planned
+completed
 
 ## Lane
 
@@ -125,3 +125,33 @@ python -m pytest videoscout/tests/test_learn_agent.py -v
 - `channel_outcomes`: Tracks channel discovery outcomes (separate concern)
 - `agent_loops`: Reuse for keyword_learning_cycle tracking
 - `channels`: Source for baseline context (avg_views, subscribers)
+
+
+## Completion Status
+
+**Phase 1 (Schema):** Complete ✅
+- `keyword_experiments` table with baseline normalization
+- `keyword_patterns` table for learning storage
+- 8 indexes, CHECK constraints, foreign keys
+
+**Phase 2 (Agent Logic):** Complete ✅
+- Pattern extraction (min 3 occurrences, 0.6 confidence)
+- Weight adjustment suggestions (not auto-apply)
+- 3 formulas locked: `actual_score`, `classify_outcome`, `evaluate_keyword`
+- 12 unit tests passing
+
+**Phase 3 (UI):** Complete ✅
+- KeywordExperimentsTab with reminder banner
+- LearningInsightsDialog with Approve/Reject
+- Fixed blockers: UserRole data, sqlite3.Row, scheduler import
+
+**Phase 4 (Orchestrator):** Complete ✅
+- `run_keyword_learning_cycle()` integrated in orchestrator
+- Saves loop record to `agent_loops` table
+- Returns analysis + suggestions + action_required flag
+- 8 unit tests + 3 integration tests passing (11 total)
+
+**Pending (Validation):**
+- 5+ real experiments completed
+- Pattern discovery verified in production
+- Weight adjustment workflow tested

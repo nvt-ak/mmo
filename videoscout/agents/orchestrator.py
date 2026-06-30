@@ -5,9 +5,14 @@ Main entry point for agentic workflow.
 import json
 from datetime import datetime
 from pathlib import Path
-from agents import discover_agent, evaluate_agent, learn_agent
-from services.channel_discovery import save_channel
-from utils.logger import get_logger
+try:
+    from agents import discover_agent, evaluate_agent, learn_agent
+    from services.channel_discovery import save_channel
+    from utils.logger import get_logger
+except ModuleNotFoundError:
+    from videoscout.agents import discover_agent, evaluate_agent, learn_agent
+    from videoscout.services.channel_discovery import save_channel
+    from videoscout.utils.logger import get_logger
 
 log = get_logger("orchestrator")
 

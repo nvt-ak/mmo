@@ -35,9 +35,9 @@
 - Suggestions returned, not auto-applied
 - Integration with existing agent loop
 
-### Phase 3: UI Implementation (TODO)
-- Create `KeywordExperimentsTab` in PyQt6
-- Implement reminder banner
+### Phase 3: UI Implementation (DONE)
+- Create `KeywordExperimentsTab` in PyQt6 ✅
+- Implement reminder banner ✅
 - Implement start experiment dialog
 - Implement report results dialog
 - Implement learning insights dialog with Approve/Reject

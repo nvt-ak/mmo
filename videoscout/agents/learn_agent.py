@@ -4,9 +4,14 @@ Learn Agent — analyzes outcomes and suggests strategy improvements.
 import json
 from datetime import datetime
 from pathlib import Path
-from agents.skills.youtube_skills import get_outcomes
-from agents.skills.llm_skills import suggest_keywords, summarize_outcomes
-from utils.logger import get_logger
+try:
+    from agents.skills.youtube_skills import get_outcomes
+    from agents.skills.llm_skills import suggest_keywords, summarize_outcomes
+    from utils.logger import get_logger
+except ModuleNotFoundError:
+    from videoscout.agents.skills.youtube_skills import get_outcomes
+    from videoscout.agents.skills.llm_skills import suggest_keywords, summarize_outcomes
+    from videoscout.utils.logger import get_logger
 
 log = get_logger("learn")
 

@@ -42,7 +42,7 @@ Implement keyword experiment tracking with:
 | Patterns discovered | 3+ with confidence >0.6 |
 | Weight adjustments applied | After human approval |
 | Reminder banner working | 7+ days old experiments |
-| Accuracy formula | Match doc example (89.4 for 4500/2000/12%) |
+| Accuracy formula | Match doc example (93 for 4500/2000/12%) |
 
 ## Stakeholders
 

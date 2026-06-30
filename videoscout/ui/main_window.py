@@ -12,6 +12,7 @@ from ui.tiktok_checker import TikTokChecker
 from ui.analytics import Analytics
 from ui.settings import Settings
 from ui.keyword_experiments_tab import KeywordExperimentsTab
+from services.scheduler_service import start, update_schedule
 
 NAV_ITEMS = [
     ("🤖  Agent Loop",    "agent"),
@@ -114,7 +115,7 @@ class MainWindow(QMainWindow):
 
     def _setup_scheduler(self):
         self._settings.schedule_changed = self._on_schedule_changed
-        start_scheduler(
+        start(
             scan_fn=lambda: __import__(
                 "services.scanner_service", fromlist=["scan_all_channels"]
             ).scan_all_channels(),
