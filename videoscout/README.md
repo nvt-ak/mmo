@@ -1,6 +1,8 @@
-# VideoScout
+# VideoScout Backend
 
-Desktop app tìm và đánh giá video YouTube để reup TikTok DE.
+FastAPI backend for TikTok keyword suggestion & learning (YouTube reup pipeline).
+
+**Frontend:** see `web/README.md` for Next.js UI.
 
 ## Setup
 
@@ -9,47 +11,46 @@ cd videoscout
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-playwright install chromium
 
 cp .env.example .env
-# Điền YOUTUBE_API_KEY vào .env
+# Set DATABASE_URL, YOUTUBE_API_KEY, LLM keys in .env
 ```
 
-## Run
+## Run API
+
+```bash
+# from repo root
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/videoscout
+python -m uvicorn videoscout.api_main:app --reload --port 8000
+```
+
+API docs: http://localhost:8000/docs
+
+## Run Desktop (deprecated)
+
+PyQt6 UI in `videoscout/ui/` is deprecated. Use the web frontend instead.
 
 ```bash
 python main.py
 ```
 
-## Build .exe (Windows)
+## Structure
 
-```bash
-pyinstaller --onefile --windowed --name VideoScout \
-  --add-data "*.env;." main.py
+```text
+videoscout/
+  api_main.py       # FastAPI entry
+  api/              # Route handlers
+  core_engine/      # Suggestion engine + learning
+  services/         # YouTube, TikTok
+  db/               # SQLAlchemy models
+  agents/           # LLM agent logic
+  ui/               # Deprecated PyQt6 desktop
 ```
 
-## Workflow
+## Database
 
-1. **Settings** → nhập YouTube API Key → Save
-2. **Channels** → Add channel URL (YouTube idol channels)
-3. **Daily Digest** → Scan Now → xem list video → Copy URLs
-4. Paste URLs vào download pipeline của bạn
-5. **TikTok Check** → verify keyword chưa bão hòa trước khi chọn niche mới
+PostgreSQL 14+. Run migrations with Alembic from repo root:
 
-## Filters mặc định
-
-| Filter | Default |
-|--------|---------|
-| Views | 150K – 200K |
-| Uploaded within | 30 ngày |
-| Channel size | < 50K subs |
-| Duration | < 3 phút |
-
-Thay đổi trong **Settings**.
-
-## Scoring (0-100)
-
-- Recency: 40 pts (càng mới càng cao)
-- View sweet spot: 30 pts (gần 175K = max)
-- Channel size: 20 pts (càng nhỏ càng ít bị report)
-- TikTok gap: 10 pts (chưa có trên TikTok = bonus)
+```bash
+alembic upgrade head
+```

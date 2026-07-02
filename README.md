@@ -10,6 +10,20 @@ decisions future agents should inherit.
 
 The app is what users touch. The harness is what agents touch.
 
+## VideoScout
+
+This repo implements **VideoScout** — TikTok keyword suggestion & learning for a YouTube reup pipeline.
+
+| Doc | Purpose |
+| --- | --- |
+| `docs/product/workflows.md` | **Product contract** — operator workflow & modules |
+| `docs/product/PRD.md` | Historical v0.1 (superseded) |
+| `docs/ARCHITECTURE.md` | System architecture |
+| `videoscout/README.md` | Backend setup & run |
+| `web/README.md` | Frontend setup & run |
+
+Quick start: see `web/README.md`.
+
 ## Why Star This Repo
 
 Star this repo if you want practical, reusable patterns for making AI-assisted
@@ -201,28 +215,12 @@ full model, the degrade ladder, and how to wire a tool into a flow step.
 
 ## Current State
 
-This repository is in Harness v0.
+Harness v0 + VideoScout implementation in progress.
 
-There is no application implementation and no baked-in product specification
-yet. The current work is the reusable project harness: the file structure,
-agent operating model, feature intake process, story templates, and validation
-expectations that help humans and agents turn a future user-provided spec into
-implementation work.
-
-## Product Sources
-
-No product contract is currently defined.
-
-When a user provides a project specification, add or reference it as the input
-spec for the first buildout, then derive smaller living artifacts from it:
-
-- `docs/product/`: current product contract files, created from the spec.
-- `docs/stories/`: story packets and backlog created from selected work.
-- `docs/TEST_MATRIX.md`: behavior-to-proof control panel.
-- `docs/decisions/`: durable decisions and tradeoffs.
-
-Do not keep a project-specific spec or product breakdown in this harness until
-a real project supplies one.
+- **Product contract:** `docs/product/PRD.md`
+- **Backend:** `videoscout/` (FastAPI, PostgreSQL)
+- **Frontend:** `web/` (Next.js)
+- **Stories & decisions:** `docs/stories/`, `docs/decisions/`
 
 ## Repository Structure
 

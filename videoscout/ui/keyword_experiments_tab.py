@@ -410,7 +410,7 @@ class KeywordExperimentsTab(QWidget):
         dialog = LearningInsightsDialog(analysis, suggestions, self)
         
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            from agents.learn_agent import apply_approved_adjustments
+            from agents.learn_agent import videoscoutly_approved_adjustments
             apply_approved_adjustments(suggestions['weight_adjustments'])
             QMessageBox.information(self, "Applied", "Scoring weights updated!")
 

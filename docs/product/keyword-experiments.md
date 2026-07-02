@@ -2,23 +2,32 @@
 
 ## Purpose
 
-Track real-world keyword performance to validate agent predictions and improve future recommendations.
+Track real-world keyword performance to validate agent predictions and improve future recommendations. R1 delivers the full workflow on the **web stack** (PostgreSQL + FastAPI + Next.js). The legacy PyQt6 desktop tab is deprecated and not extended.
 
-## User Workflow
+## User Workflow (Web)
+
+Primary surface: **Insights** page at `/insights` in the web app.
 
 ### 1. Start Experiment
 
 **When:** After agent suggests keywords or when testing a manual keyword idea
 
-**Steps:**
-1. Open VideoScout → Keyword Experiments tab
-2. Click "Start New Experiment"
-3. Enter keyword (e.g., "newjeans fancam")
-4. Select channel to test on
-5. Mark source:
-   - **Agent Suggested**: If keyword came from agent evaluation
-   - **Manual Entry**: If you thought of it independently
-6. Click "Start Experiment"
+**Via API** (automation or future UI):
+
+```http
+POST /api/v1/experiments
+Content-Type: application/json
+
+{
+  "keyword": "newjeans fancam",
+  "channel_id": "UC...",
+  "channel_subscribers": 5000,
+  "creator_avg_views": 2000,
+  "suggestion_source": "agent_suggested",
+  "agent_suggested_score": 72,
+  "predicted_score": 72
+}
+```
 
 **What happens:**
 - System predicts score using current evaluation model
@@ -30,57 +39,79 @@ Track real-world keyword performance to validate agent predictions and improve f
 **Your action:**
 - Create TikTok video using the keyword
 - Upload and monitor performance for 7-14 days
-- Track views, engagement, retention
+- Track views, likes, comments, followers gained
 
 ### 3. Report Results
 
 **When:** After 7-14 days (or when results are conclusive)
 
-**Steps:**
-1. Return to Keyword Experiments tab
-2. Select your experiment
-3. Click "Report Results"
-4. Enter actual metrics:
-   - Total views
-   - Engagement rate (%)
-   - Retention rate (%)
-5. Mark outcome:
-   - ✅ Success: Met or exceeded expectations
-   - ⚠️ Partial: Some success but below expectations
-   - ❌ Failed: Underperformed significantly
-6. Rate 1-5 stars
-7. Add comments (optional but helpful)
-8. Click "Submit Report"
+**Web steps:**
+1. Open the web app → navigate to **Insights** (`/insights`)
+2. In the **Report performance** form, select an approved keyword from the dropdown (or type one manually)
+3. Enter actual metrics:
+   - Views
+   - Likes
+   - Comments
+   - Followers gained
+4. Select outcome: Success / Neutral / Failure
+5. Click **Submit report**
+
+**API equivalent:**
+
+```http
+POST /api/v1/performance/reports
+Content-Type: application/json
+
+{
+  "keyword": "newjeans fancam",
+  "actual_views": 4500,
+  "actual_likes": 320,
+  "actual_comments": 45,
+  "followers_gained": 12,
+  "outcome": "success",
+  "suggestion_id": "<optional-uuid>"
+}
+```
+
+**Experiment report** (full experiment lifecycle):
+
+```http
+POST /api/v1/experiments/{experiment_id}/report
+```
 
 **What happens:**
-- System computes accuracy (predicted vs actual)
-- Classifies outcome type (true_positive, false_positive, etc.)
+- Report persisted in `performance_reports` table
+- `LearningEventModel` created (type=`report`)
+- `KnowledgeBase` enriches future keyword extraction prompts
+- System computes accuracy (predicted vs actual) when linked to an experiment
 - Uses baseline normalization (your views vs channel average)
-- Adds to learning dataset
 
-### 4. View Learning Insights
+### 4. View Experiments & Learning Insights
 
-**When:** After 5+ experiments completed
+**When:** Any time; pattern analysis after 5+ completed experiments
 
-**Steps:**
-1. Click "View Learning Insights"
-2. Review patterns discovered:
-   - Which keyword types overperformed
-   - Which types underperformed
-   - Agent suggestion accuracy
-3. Review suggested weight adjustments
-4. Click **Approve** to apply changes, or **Reject** to keep current strategy
+**Web steps:**
+1. Open **Insights** (`/insights`)
+2. Review **Recent experiments** table (shows `in_progress` and `reported` items)
+3. Review rejection patterns, success patterns, and summary metrics
+4. Click **Run learning cycle** to trigger pattern analysis
+5. Review suggested weight adjustments from the learning cycle response
+
+**API endpoints:**
+
+| Action | Endpoint |
+| --- | --- |
+| List experiments | `GET /api/v1/experiments` |
+| List experiments (filtered) | `GET /api/v1/experiments?status=in_progress` |
+| Analyze patterns | `POST /api/v1/experiments/analyze` |
+| Learning insights | `GET /api/v1/learning/insights` |
+| Run learning cycle | `POST /api/v1/learning/cycle` |
+| Report history | `GET /api/v1/performance/reports?keyword=` |
 
 **What happens:**
-- If approved: Scoring weights updated
-- Future keyword evaluations use new weights
-- Change logged in strategy update history
-
-## Reminders
-
-- Yellow banner appears on app startup for experiments 7+ days old
-- Banner shows count: "⏰ 2 experiments ready to report"
-- Click to view pending experiments
+- Pattern extraction requires min 3 occurrences, min 0.6 confidence
+- Weight suggestions capped 0.5x–2.0x, not auto-applied
+- Future keyword evaluations use approved strategy updates
 
 ## Metrics Explained
 
@@ -138,16 +169,16 @@ Example:
 
 ## Privacy & Data
 
-- All experiments stored locally in `videoscout.db`
-- No data sent to external servers
-- Learning happens on your machine
-- Strategy updates saved in `agents/memory/strategy.json`
+- Experiments and reports stored in PostgreSQL (local or deployed instance)
+- API served by FastAPI backend (`videoscout/api_main.py`)
+- Web UI consumes API only — no direct DB access
+- Learning happens server-side; strategy updates require operator approval
 
 ## Troubleshooting
 
 **"Insufficient data" message:**
 - Need at least 5 completed experiments
-- Complete and report more experiments
+- Complete and report more experiments via `/insights`
 
 **No patterns found:**
 - Need 3+ similar outcomes for a pattern
@@ -167,12 +198,11 @@ Example:
 - Source: Agent suggested (score 72)
 - Predicted: 72/100
 
-**After 10 days:**
+**After 10 days (report via `/insights`):**
 - Actual views: 4,500
-- Engagement: 12.0%
-- Status: Success ✅
-- Rating: 5 stars
-- Comments: "Long-tail keyword worked great, clear audience intent"
+- Likes: 320, Comments: 45
+- Outcome: Success
+- Followers gained: 12
 
 **Result:**
 - Views vs baseline: 2.25x (4500/2000)

@@ -2,6 +2,32 @@
 
 Add project-specific agent instructions here.
 
+## Workflow Rules (mandatory)
+
+Before **any** code change:
+
+1. **Intake** — classify work per `docs/FEATURE_INTAKE.md` (tiny / normal / high-risk)
+2. **Story** — link to existing story ID or create packet in `docs/stories/` first
+3. **Context** — read `docs/CONTEXT_RULES.md` for phase-appropriate docs
+4. **Matrix** — run `scripts/bin/harness-cli query matrix`; update proof when done
+5. **Stack changes** — record ADR in `docs/decisions/` **before** implementation
+
+**No code without story ID or documented intake classification.**
+
+After implementation:
+
+- Update story status + validation evidence via `harness-cli story update`
+- Architecture changes → `docs/ARCHITECTURE.md` + ADR if durable
+- Record trace for non-trivial work: `scripts/bin/harness-cli trace`
+
+## Documentation Rules
+
+- Do **not** create `.md` files at repo root (except `README.md`, `AGENTS.md`, `CLAUDE.md`).
+- Architecture updates → `docs/ARCHITECTURE.md`
+- Product changes → `docs/product/` or story changelog
+- Session notes → `docs/decisions/` ADR, not standalone summary files
+- Run/setup docs → `videoscout/README.md` or `web/README.md`
+
 <!-- HARNESS:BEGIN -->
 ## Harness
 
@@ -25,7 +51,7 @@ capability is a clean skip.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **mmo** (2208 symbols, 2965 relationships, 69 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **mmo** (3142 symbols, 4559 relationships, 106 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

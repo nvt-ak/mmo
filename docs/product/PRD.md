@@ -1,9 +1,17 @@
 # VideoScout — Product Requirements Document
 
+> **⚠️ Superseded (2026-07-02):** PRD v0.1 describes a video-centric Daily Digest model
+> that no longer matches the product. **Canonical product contract:**
+> - [`docs/product/workflows.md`](workflows.md) — operator workflow & modules
+> - [`docs/superpowers/specs/2026-07-02-videoscout-workflow-design.md`](../superpowers/specs/2026-07-02-videoscout-workflow-design.md) — full design spec
+>
+> Keep this file for historical context only. Do not implement from sections below
+> without checking workflows.md first.
+
 **Version:** 0.1  
 **Date:** 2026-06-30  
 **Author:** brainstorm session  
-**Status:** Draft
+**Status:** Superseded
 
 ---
 

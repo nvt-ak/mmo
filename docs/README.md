@@ -26,6 +26,5 @@ future user-provided spec.
 
 ## Current State
 
-Harness v0 exists before implementation. These docs define how the project will
-grow; they do not imply that app code, tests, CI, or deployment automation exist
-yet.
+VideoScout app + Harness v0. Product contract in `docs/product/`. Architecture in
+`docs/ARCHITECTURE.md`. Backend in `videoscout/`, frontend in `web/`.

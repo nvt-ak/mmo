@@ -3,7 +3,15 @@
 Stories are work packets. They turn product intent into bounded implementation
 and validation work.
 
-No story packets are active yet.
+## Active Stories
+
+| ID | Title | Status |
+| --- | --- | --- |
+| US-001 | Keyword Experiment Feedback Loop | implemented |
+| US-002 | FastAPI Backend & PostgreSQL | implemented |
+| US-003 | Web Frontend (Next.js Inbox) | implemented |
+
+See `docs/stories/backlog.md` for full index and planned work.
 
 ## Normal Story
 

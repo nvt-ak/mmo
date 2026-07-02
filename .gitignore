@@ -13,6 +13,12 @@ __pycache__/
 graphify-out
 logs
 
+# agent session artifacts
+SESSION_*.md
+*_COMPLETE.md
+FILES_CREATED.md
+docs/status/
+
 venv
 videoscout.db
 videoscout.db-journal
@@ -20,3 +26,5 @@ videoscout.db-lock
 videoscout.db-wal
 videoscout.db-shm
 videoscout.db-wal
+
+graphify-out/

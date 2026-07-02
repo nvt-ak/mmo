@@ -2,7 +2,7 @@
 
 ## Overview
 
-The VideoScout agent learning system enables continuous improvement of keyword recommendations through real-world experiment feedback. Users test agent-suggested keywords in production, report actual results, and the system automatically extracts patterns to refine its scoring model.
+The VideoScout agent learning system enables continuous improvement of keyword recommendations through real-world experiment feedback. Operators test agent-suggested keywords in production, report actual TikTok results via the web UI, and the system extracts patterns to refine its scoring model. All data persists in PostgreSQL and is accessible through the FastAPI backend.
 
 ## Architecture
 
@@ -10,28 +10,41 @@ The VideoScout agent learning system enables continuous improvement of keyword r
 User Experiment → Report Outcome → Pattern Extraction → Human Approval → Strategy Update
 ```
 
+**Stack (R1):** PostgreSQL → FastAPI (`/api/v1/...`) → Next.js web (`/insights`)
+
 ### Components
 
 1. **Experiment Tracking**
-   - Database: `keyword_experiments` table
+   - Database: `keyword_experiments` table (PostgreSQL, Alembic migration `0002`)
+   - API: `POST /api/v1/experiments`, `GET /api/v1/experiments`, `POST /api/v1/experiments/{id}/report`
    - Captures: keyword, predicted score, actual performance, baseline context
-   - Status: in_progress → success/failed/partial
+   - Status: `in_progress` → `reported` (success/failed/partial outcome)
 
-2. **Pattern Extraction**
-   - Function: `learn_agent._extract_patterns(experiments)`
+2. **Performance Reports & Knowledge Base**
+   - Database: `performance_reports` table (shared migration `0002`)
+   - API: `POST /api/v1/performance/reports`, `GET /api/v1/performance/reports?keyword=`
+   - `KnowledgeBase.get_context(keyword)` formats recent reports + aggregates for LLM prompts
+   - Submissions create `LearningEventModel` records (type=`report`)
+
+3. **Pattern Extraction**
+   - Module: `videoscout/core_engine/experiments.py`
+   - Functions: `extract_patterns()`, `suggest_weight_adjustments()`
+   - API trigger: `POST /api/v1/experiments/analyze`
    - Algorithm: Group by keyword traits + outcome type
    - Requirements: Min 3 occurrences, min 0.6 confidence
    - Output: Pattern list with evidence and reasoning
 
-3. **Scoring Adjustment**
-   - Function: `learn_agent.suggest_scoring_adjustments(patterns)`
+4. **Scoring Adjustment**
+   - Function: `suggest_weight_adjustments(patterns)` in `core_engine/experiments.py`
    - Returns: Suggested weight adjustments (not auto-applied)
    - Constraints: Adjustments capped to 0.5x - 2.0x range
+   - No file I/O to legacy `strategy.json`; adjustments returned via API only
 
-4. **Human Approval**
-   - UI: LearningInsightsDialog with Approve/Reject buttons
-   - Only approved adjustments are applied to strategy.json
-   - Maintains update_history for auditability
+5. **Learning Insights (Web)**
+   - UI: `/insights` — rejection/success patterns, summary metrics, recent experiments
+   - API: `GET /api/v1/learning/insights`, `POST /api/v1/learning/cycle`
+   - "Run learning cycle" button triggers analysis and strategy updates
+   - Human approval flow preserved — no automatic strategy changes without operator action
 
 ## Baseline Normalization
 
@@ -73,16 +86,17 @@ This enables separate accuracy tracking:
 
 ## Learning Cycle
 
-1. User completes 5+ experiments
-2. Click "View Learning Insights" in UI
-3. System analyzes experiments, extracts patterns
-4. UI shows:
-   - Patterns discovered
-   - Suggested weight adjustments
-   - Affected examples
-5. User clicks Approve or Reject
-6. If approved: strategy.json updated with new weights
-7. Future keyword evaluations use updated weights
+1. Operator completes 5+ experiments (via API or web report form)
+2. Open **Insights** (`/insights`) in the web app
+3. Click **Run learning cycle** (or call `POST /api/v1/experiments/analyze`)
+4. System analyzes experiments, extracts patterns
+5. UI shows:
+   - Rejection and success patterns
+   - Summary metrics
+   - Recent experiments table
+6. Review suggested weight adjustments from analyze response
+7. Approve adjustments through learning cycle (no auto-apply)
+8. Future keyword evaluations use updated weights
 
 ## Safeguards
 
@@ -90,15 +104,22 @@ This enables separate accuracy tracking:
 - **Confidence threshold**: Only patterns with 0.6+ confidence generate suggestions
 - **Weight caps**: All adjustments bounded to 0.5x - 2.0x range
 - **Human approval**: No automatic strategy changes
-- **Audit trail**: update_history in strategy.json logs all changes
+- **Audit trail**: Learning events and report history in PostgreSQL
 
 ## Files
 
-- `videoscout/agents/learn_agent.py`: Core learning logic
-- `videoscout/agents/orchestrator.py`: Workflow coordination
-- `videoscout/database/db.py`: Schema definitions
-- `videoscout/agents/memory/strategy.json`: Current weights and history
-- `videoscout/ui/keyword_experiments_tab.py`: User interface
+| Layer | Path |
+| --- | --- |
+| Domain logic | `videoscout/core_engine/experiments.py` |
+| Knowledge base | `videoscout/core_engine/knowledge_base.py` |
+| Learning agent | `videoscout/core_engine/learning.py` |
+| Experiments API | `videoscout/api/experiments.py` |
+| Performance API | `videoscout/api/performance.py` |
+| Learning API | `videoscout/api/learning.py` |
+| DB models | `videoscout/db/models.py` |
+| Web UI | `web/src/components/insights/insights-page.tsx` |
+| Report form | `web/src/components/insights/performance-report-form.tsx` |
+| Legacy (desktop) | `videoscout/ui/keyword_experiments_tab.py` (deprecated, not extended) |
 
 ## Future Enhancements
 

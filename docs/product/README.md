@@ -1,14 +1,15 @@
 # Product Docs
 
-This directory is intentionally generic and mostly empty in Harness v0.
+Living product contract for VideoScout.
 
-When a user provides a project spec, derive smaller product contract files here
-instead of keeping one large spec as the living plan. Name files by the product
-domains that actually exist in that spec, for example `overview.md`,
-`billing.md`, `workflows.md`, `permissions.md`, or `api-conventions.md`.
+| File | Status |
+| --- | --- |
+| [`workflows.md`](workflows.md) | **Active** — operator workflow, modules, metrics |
+| [`PRD.md`](PRD.md) | Superseded v0.1 — historical only |
+| [`agent-learning-system.md`](agent-learning-system.md) | Draft — update in R1 |
+| [`keyword-experiments.md`](keyword-experiments.md) | Draft — update in R1 |
 
-Do not create domain files before the spec just to fill the folder. Empty
-structure is healthier than fake product truth.
+Design spec: [`docs/superpowers/specs/2026-07-02-videoscout-workflow-design.md`](../superpowers/specs/2026-07-02-videoscout-workflow-design.md)
 
 ## Update Rule
 

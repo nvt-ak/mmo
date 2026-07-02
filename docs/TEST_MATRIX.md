@@ -1,33 +1,37 @@
 # Test Matrix
 
-This file maps product behavior to proof.
+Maps product behavior to proof. Query live status:
 
-No product behavior has been defined or implemented yet. Do not mark a row
-implemented until tests or validation evidence exist.
+```bash
+scripts/bin/harness-cli query matrix
+```
 
 ## Status Values
 
 | Status | Meaning |
 | --- | --- |
-| planned | Accepted as intended behavior, not implemented |
+| planned | Accepted, not implemented |
 | in_progress | Actively being built |
-| implemented | Implemented and proof exists |
-| changed | Contract changed after earlier implementation |
-| retired | No longer part of the product contract |
+| implemented | Proof exists |
+| changed | Contract changed after implementation |
+| retired | No longer in product contract |
 
 ## Matrix
 
 | Story | Contract | Unit | Integration | E2E | Platform | Status | Evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TBD | Add rows when story packets are created | no | no | no | no | planned | none |
+| US-001 | Keyword experiment feedback loop | yes | yes | no | no | implemented | `videoscout/tests/test_keyword_learning_integration.py` |
+| US-002 | FastAPI backend + PostgreSQL | yes | yes | no | no | implemented | `python -m pytest videoscout/tests_api/ -v` |
+| US-003 | Next.js web inbox UI | no | no | no | yes | implemented | `cd web && npm run build && npm run lint` |
+| US-004 | Browser E2E tests | — | — | — | — | planned | — |
+| US-010 | Keyword experiments on PostgreSQL + API | yes | yes | no | no | implemented | `python -m pytest videoscout/tests_api/test_experiments_api.py videoscout/tests_api/test_experiments_engine.py -v` |
+| US-011 | TikTok search stats in agent scoring | yes | yes | no | no | implemented | `python -m pytest videoscout/tests_api/test_tiktok_scoring.py -v` |
+| US-012 | Performance report → knowledge base | yes | yes | no | no | implemented | `python -m pytest videoscout/tests_api/test_performance_api.py -v` |
+| US-013 | Web experiments & report UI (`/insights`) | no | no | no | yes | implemented | `cd web && npm run build && npm run lint` |
 
 ## Evidence Rules
 
-- Unit proof covers pure domain and application rules.
-- Integration proof covers backend enforcement, data integrity, provider
-  behavior, jobs, or service contracts.
-- E2E proof covers user-visible browser flows.
-- Platform proof covers only shell, deployment, mobile, desktop, or runtime
-  behavior that cannot be proven in lower layers.
-- A story can be implemented without every proof column if the story packet
-  explains why.
+- Unit: pure domain and application rules
+- Integration: API enforcement, data integrity, service contracts
+- E2E: user-visible browser flows
+- Platform: build/deploy/runtime proof when lower layers insufficient

@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from database.db import get_connection
 from agents.orchestrator import run_keyword_learning_cycle
-from agents.learn_agent import apply_approved_adjustments, _load_strategy
+from agents.learn_agent import videoscoutly_approved_adjustments, _load_strategy
 import agents.learn_agent as learn_agent_module
 
 @pytest.fixture(autouse=True)

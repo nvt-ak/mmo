@@ -1,26 +1,98 @@
 # Architecture
 
-No application stack is selected yet.
+VideoScout — web-only keyword suggestion & learning system for YouTube → TikTok DE reup pipeline.
 
-No application code exists yet. This document defines generic architecture
-questions and boundary rules that future implementation should adapt after a
-user-provided spec and stack decision exist.
+**Decision:** Web-only (Next.js + FastAPI). PyQt6 desktop UI deprecated.
 
-## Discovery Before Shape
+See `docs/decisions/0008-web-only-fastapi-postgresql.md`.
 
-Before proposing implementation shape, identify:
+See also: `docs/product/PRD.md`, `docs/decisions/`.
 
-- Product surfaces: browser, mobile, desktop, CLI, API, worker, or service.
-- Runtime stack: language, framework, database, queues, providers, and hosting.
-- Core domains: the product concepts that deserve stable names and contracts.
-- Boundary inputs: user input, API requests, webhooks, jobs, files, credentials,
-  provider payloads, and environment configuration.
-- Validation ladder: the smallest checks that can prove the selected stack.
+## System Overview
 
-Record stack choices in `docs/decisions/` when they meaningfully constrain
-future work.
+```text
+┌─────────────────────────────────────────────┐
+│  Frontend (Next.js + TypeScript)            │
+│  Port: 3000                                 │
+│  - Inbox (pending/approved suggestions)     │
+│  - Sources (channel management)             │
+│  - Settings (weights, niche, LLM config)      │
+│  - Insights (learning analytics)            │
+└──────────────┬──────────────────────────────┘
+               │ HTTP REST + JSON
+┌──────────────▼──────────────────────────────┐
+│  Backend (FastAPI + Python)                 │
+│  Port: 8000  —  videoscout/api_main.py      │
+│  - API routes (suggestions, scan, etc.)     │
+│  - Suggestion engine (LLM + scoring)        │
+│  - Learning agent (patterns + weights)      │
+│  - Services (YouTube, TikTok)               │
+│  - Background tasks (APScheduler)           │
+└──────────────┬──────────────────────────────┘
+               │ SQL
+┌──────────────▼──────────────────────────────┐
+│  Database (PostgreSQL 14+)                  │
+│  - suggestions, learning_events, channels   │
+│  - settings                                 │
+└─────────────────────────────────────────────┘
+```
 
-## Default Layering
+## Repository Layout
+
+```text
+videoscout/           # Backend (FastAPI, engine, services, agents)
+  api_main.py         # API entry point
+  api/                # Route handlers
+  core_engine/        # Suggestion engine + learning
+  services/           # YouTube, TikTok integrations
+  db/                 # SQLAlchemy models
+web/                  # Frontend (Next.js App Router)
+docs/product/         # Product contract (PRD, domain docs)
+docs/stories/         # Story packets
+docs/decisions/       # ADRs
+```
+
+**Deprecated:** `videoscout/ui/` (PyQt6 desktop), `videoscout/main.py` (desktop entry).
+
+## Product Modules (M1–M5)
+
+Canonical workflow: `docs/product/workflows.md`. ADR: `docs/decisions/0009-keyword-led-content-factory.md`.
+
+| Module | Responsibility | Phase |
+| --- | --- | --- |
+| M1 Keyword Intelligence | Agent score, inbox, learning | R1 (partial) |
+| M2 Channel Discovery | Keyword → channels → subscribe | R2 |
+| M3 Ingestion | Download + watcher | R3 |
+| M3b Batch Review | Keep/Skip daily UI | R4 |
+| M4 Production | Merge → `data/finals/` | R5 |
+| M5 Feedback | TikTok reports → KB | R6 |
+
+**Planned additions:** `videoscout/workers/`, `services/download.py`, `services/merge.py`, tables `video_assets`, `merge_jobs`, `performance_reports`.
+
+## Tech Stack
+
+| Layer | Technology | Port |
+| --- | --- | --- |
+| Frontend | Next.js + TypeScript + Tailwind | 3000 |
+| Backend | FastAPI + Python | 8000 |
+| Database | PostgreSQL 14+ | 5432 |
+| State | TanStack React Query | — |
+
+## Development
+
+```bash
+# Terminal 1: backend
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/videoscout
+python -m uvicorn videoscout.api_main:app --reload --port 8000
+
+# Terminal 2: frontend
+cd web && npm install && npm run dev
+# → http://localhost:3000
+```
+
+See `videoscout/README.md` and `web/README.md` for full setup.
+
+## Layering & Boundary Rules
 
 ```text
 domain
@@ -30,44 +102,7 @@ domain
               <- app surfaces
 ```
 
-## Candidate Structure
-
-```text
-app/
-  domain/
-    entities/
-    value-objects/
-    repositories/
-    services/
-
-  application/
-    commands/
-    queries/
-    handlers/
-
-  infrastructure/
-    database/
-    logging/
-    notifications/
-
-  interface/
-    controllers/
-    dto/
-    presenters/
-    routes/
-    middlewares/
-
-surfaces/
-  browser/
-  mobile/
-  desktop/
-  cli/
-```
-
-This is a thinking template, not a scaffold. Create real folders only when a
-story enters implementation and the selected stack needs them.
-
-## Dependency Rule
+### Dependency Rule
 
 Inner layers must not depend on outer layers.
 
@@ -79,55 +114,19 @@ Inner layers must not depend on outer layers.
 | interface | all backend layers | UI state or platform shell assumptions |
 | app surfaces | API contracts and app-facing clients | domain internals directly |
 
-## Parse-First Boundary Rule
+### Parse-First Boundary Rule
 
 Unknown data must be parsed at boundaries before it enters inner code.
 
-Boundaries include:
-
-- HTTP request bodies, params, and query strings.
-- Session payloads and identity claims.
-- Environment variables.
-- Database rows returned from external clients.
-- Platform shell payloads.
-- Deep links, tokens, and signed URLs.
-- Provider webhooks, events, and async payloads.
-
-Target flow:
+Boundaries include HTTP request bodies, env vars, database rows, provider webhooks.
 
 ```text
-unknown input
-  -> parser
-  -> typed DTO or command
-  -> application use case
-  -> domain object/value object
+unknown input → parser → typed DTO → use case → domain object
 ```
 
-Inner layers should work with meaningful product types such as `UserId`,
-`AccountId`, `WorkspaceId`, `Role`, `DateRange`, or domain-specific IDs,
-rather than repeatedly validating raw strings.
+### Observability
 
-## Command/Query Boundary
+Emit one canonical JSON log line per request with: timestamp, level, request_id,
+user_id (when known), action, duration_ms, status_code, message.
 
-If the product has both reads and writes, keep command/query separation clear at
-the code level even when the storage layer is simple:
-
-- Commands mutate state and own audit side effects.
-- Queries read state and format for consumers.
-- Shared domain rules live in domain/application, not controllers.
-
-## Observability Contract
-
-The future server should emit one canonical JSON log line per request with:
-
-- timestamp
-- level
-- request_id
-- user_id when known
-- action
-- duration_ms
-- status_code
-- message
-
-Audit logs are product records. Application logs are operational records. Do not
-use one as a substitute for the other.
+Audit logs are product records. Application logs are operational records.
