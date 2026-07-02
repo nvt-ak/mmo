@@ -149,6 +149,44 @@ export interface ExperimentListResponse {
   total: number;
 }
 
+export type VideoReviewStatus = "pending" | "in_pool" | "skipped";
+
+export interface VideoAsset {
+  id: string;
+  youtube_video_id: string;
+  channel_id: string;
+  suggestion_id?: string;
+  title: string;
+  view_count?: number;
+  duration_sec?: number;
+  youtube_url: string;
+  file_path: string;
+  status: string;
+  review_status: VideoReviewStatus;
+  downloaded_at: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BatchVideoAsset extends VideoAsset {
+  channel_name?: string;
+  keyword?: string;
+  thumbnail_url?: string;
+}
+
+export interface BatchListResponse {
+  items: BatchVideoAsset[];
+  total: number;
+  limit: number;
+  pending_count: number;
+  in_pool_count: number;
+  skipped_count: number;
+}
+
+export interface BulkVideoReviewResponse {
+  updated_count: number;
+  review_status: VideoReviewStatus;
+}
+
 export type RejectReason =
   | "too_broad"
   | "too_competitive"

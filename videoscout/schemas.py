@@ -308,6 +308,40 @@ class VideoAssetListResponse(BaseModel):
     limit: int
 
 
+class BatchVideoAsset(VideoAsset):
+    channel_name: Optional[str] = None
+    keyword: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+
+
+class BatchListResponse(BaseModel):
+    items: List[BatchVideoAsset]
+    total: int
+    limit: int
+    pending_count: int
+    in_pool_count: int
+    skipped_count: int
+
+
+class VideoReviewAction(BaseModel):
+    action: str = Field(..., pattern="^(keep|skip)$")
+
+
+class BulkVideoReviewRequest(BaseModel):
+    video_ids: List[str] = Field(..., min_length=1, max_length=200)
+    action: str = Field(..., pattern="^(keep|skip)$")
+
+
+class VideoReviewResponse(BaseModel):
+    id: str
+    review_status: str
+
+
+class BulkVideoReviewResponse(BaseModel):
+    updated_count: int
+    review_status: str
+
+
 # Learning
 class RejectionPattern(BaseModel):
     reason: str

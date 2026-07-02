@@ -1,4 +1,6 @@
 import type {
+  BatchListResponse,
+  BulkVideoReviewResponse,
   ChannelListResponse,
   ExperimentListResponse,
   LearningInsightsResponse,
@@ -8,6 +10,7 @@ import type {
   SettingsResponse,
   SuggestionListResponse,
   SuggestionStatus,
+  VideoReviewStatus,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -181,6 +184,26 @@ export const api = {
       weight_suggestions: Array<Record<string, unknown>>;
     }>("/api/v1/experiments/analyze", {
       method: "POST",
+    }),
+
+  listBatchVideos: (params?: { review_status?: VideoReviewStatus; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.review_status) q.set("review_status", params.review_status);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return apiFetch<BatchListResponse>(`/api/v1/batch${qs ? `?${qs}` : ""}`);
+  },
+
+  reviewVideo: (videoId: string, action: "keep" | "skip") =>
+    apiFetch<{ id: string; review_status: VideoReviewStatus }>(
+      `/api/v1/videos/${videoId}/review`,
+      { method: "POST", body: JSON.stringify({ action }) },
+    ),
+
+  bulkReviewVideos: (videoIds: string[], action: "keep" | "skip") =>
+    apiFetch<BulkVideoReviewResponse>("/api/v1/batch/review", {
+      method: "POST",
+      body: JSON.stringify({ video_ids: videoIds, action }),
     }),
 };
 
