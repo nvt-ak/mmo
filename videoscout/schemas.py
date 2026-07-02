@@ -342,6 +342,62 @@ class BulkVideoReviewResponse(BaseModel):
     review_status: str
 
 
+class MergePoolVideo(BatchVideoAsset):
+    pass
+
+
+class MergePoolResponse(BaseModel):
+    items: List[MergePoolVideo]
+    total: int
+    limit: int
+
+
+class ManualMergeRequest(BaseModel):
+    video_ids: List[str] = Field(..., min_length=2, max_length=2)
+
+
+class RandomMergeRequest(BaseModel):
+    suggestion_id: Optional[str] = None
+
+
+class MergeJobResponse(BaseModel):
+    id: str
+    job_type: str
+    status: str
+    video_a_id: Optional[str] = None
+    video_b_id: Optional[str] = None
+    suggestion_id: Optional[str] = None
+    error_message: Optional[str] = None
+    final_video_id: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class MergeEnqueueResponse(BaseModel):
+    job_id: str
+    video_ids: List[str]
+    status: str
+
+
+class FinalVideo(BaseModel):
+    id: str
+    merge_job_id: Optional[str] = None
+    file_path: str
+    keyword: Optional[str] = None
+    suggestion_id: Optional[str] = None
+    source_video_ids: List[str]
+    duration_sec: Optional[int] = None
+    created_at: datetime
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class FinalVideoListResponse(BaseModel):
+    items: List[FinalVideo]
+    total: int
+    limit: int
+
+
 # Learning
 class RejectionPattern(BaseModel):
     reason: str

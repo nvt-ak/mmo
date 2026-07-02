@@ -149,7 +149,7 @@ export interface ExperimentListResponse {
   total: number;
 }
 
-export type VideoReviewStatus = "pending" | "in_pool" | "skipped";
+export type VideoReviewStatus = "pending" | "in_pool" | "skipped" | "merged";
 
 export interface VideoAsset {
   id: string;
@@ -185,6 +185,50 @@ export interface BatchListResponse {
 export interface BulkVideoReviewResponse {
   updated_count: number;
   review_status: VideoReviewStatus;
+}
+
+export interface MergePoolResponse {
+  items: BatchVideoAsset[];
+  total: number;
+  limit: number;
+}
+
+export interface MergeJob {
+  id: string;
+  job_type: string;
+  status: string;
+  video_a_id?: string;
+  video_b_id?: string;
+  suggestion_id?: string;
+  error_message?: string;
+  final_video_id?: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface MergeEnqueueResponse {
+  job_id: string;
+  video_ids: string[];
+  status: string;
+}
+
+export interface FinalVideo {
+  id: string;
+  merge_job_id?: string;
+  file_path: string;
+  keyword?: string;
+  suggestion_id?: string;
+  source_video_ids: string[];
+  duration_sec?: number;
+  created_at: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface FinalVideoListResponse {
+  items: FinalVideo[];
+  total: number;
+  limit: number;
 }
 
 export type RejectReason =

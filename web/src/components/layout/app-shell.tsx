@@ -4,47 +4,50 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV = [
-  { href: "/today", label: "Inbox", desc: "Review suggestions" },
-  { href: "/batch", label: "Batch", desc: "Keep or skip videos" },
-  { href: "/sources", label: "Sources", desc: "YouTube channels" },
+  { href: "/today", label: "Inbox", desc: "Keyword review" },
+  { href: "/batch", label: "Batch", desc: "Video curation" },
+  { href: "/merge", label: "Merge", desc: "Build finals" },
+  { href: "/sources", label: "Sources", desc: "Channel list" },
+  { href: "/insights", label: "Insights", desc: "Learning data" },
   { href: "/settings", label: "Settings", desc: "Weights & niche" },
-  { href: "/insights", label: "Insights", desc: "Learning patterns" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
-    <div className="flex min-h-screen bg-[var(--surface)] text-[var(--foreground)]">
-      <aside className="flex w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] px-3 py-6">
-        <div className="mb-8 px-3">
-          <p className="text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
+    <div className="relative z-10 flex min-h-screen text-[var(--foreground)]">
+      <aside className="flex w-60 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] px-4 py-8">
+        <div className="mb-10 px-2">
+          <p className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-[var(--muted)]">
             VideoScout
           </p>
-          <h1 className="mt-1 text-lg font-semibold text-white">Keyword Inbox</h1>
+          <h1 className="font-editorial mt-2 text-2xl leading-none text-[var(--foreground-strong)]">
+            Operator
+          </h1>
         </div>
-        <nav className="flex flex-1 flex-col gap-1">
+        <nav className="flex flex-1 flex-col gap-0.5">
           {NAV.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-lg px-3 py-2.5 transition-colors ${
+                className={`rounded-[var(--radius-sm)] px-3 py-2.5 transition-colors ${
                   active
-                    ? "bg-[var(--accent-muted)] text-white"
-                    : "text-[var(--sidebar-text)] hover:bg-white/5 hover:text-white"
+                    ? "bg-[var(--surface-muted)] text-[var(--foreground-strong)]"
+                    : "text-[var(--muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
                 }`}
               >
                 <span className="block text-sm font-medium">{item.label}</span>
-                <span className="block text-xs opacity-70">{item.desc}</span>
+                <span className="block text-xs leading-snug opacity-80">{item.desc}</span>
               </Link>
             );
           })}
         </nav>
-        <p className="px-3 text-xs text-[var(--muted)]">API → localhost:8000</p>
+        <p className="px-2 font-mono text-[0.65rem] text-[var(--muted)]">localhost:8000</p>
       </aside>
-      <main className="flex min-w-0 flex-1 flex-col">{children}</main>
+      <main className="flex min-w-0 flex-1 flex-col bg-[var(--canvas)]">{children}</main>
     </div>
   );
 }

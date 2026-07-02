@@ -46,7 +46,7 @@ download, and monitoring → operator curates daily batch → merges videos →
 | M2 | Channel Discovery | Partial (discover + subscribe done in R2) |
 | M3 | Ingestion (download + watcher) | Implemented (R3) |
 | M3b | Batch Review | Implemented (R4) |
-| M4 | Production (merge) | Planned (R5) |
+| M4 | Production (merge) | Implemented (R5) |
 | M5 | Feedback Loop | Partial (US-001 desktop) |
 
 ---

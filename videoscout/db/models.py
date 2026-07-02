@@ -444,7 +444,7 @@ class VideoAssetModel(Base):
             name="ck_video_assets_status",
         ),
         CheckConstraint(
-            "review_status IN ('pending', 'in_pool', 'skipped')",
+            "review_status IN ('pending', 'in_pool', 'skipped', 'merged')",
             name="ck_video_assets_review_status",
         ),
         Index(
@@ -498,3 +498,72 @@ class DownloadJobModel(Base):
             "created_at",
         ),
     )
+
+
+class MergeJobModel(Base):
+    """Merge two pool videos into a final output."""
+
+    __tablename__ = "merge_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_type = Column(String(50), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default="queued", index=True)
+    video_a_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("video_assets.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    video_b_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("video_assets.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    suggestion_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("suggestions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "job_type IN ('manual', 'random')",
+            name="ck_merge_jobs_job_type",
+        ),
+        CheckConstraint(
+            "status IN ('queued', 'processing', 'done', 'failed')",
+            name="ck_merge_jobs_status",
+        ),
+    )
+
+
+class FinalVideoModel(Base):
+    """Registry of merged output files in data/finals/."""
+
+    __tablename__ = "final_videos"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    merge_job_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("merge_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    file_path = Column(String(1000), nullable=False)
+    keyword = Column(String(500), nullable=True)
+    suggestion_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("suggestions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_video_ids = Column(JSONB, nullable=False)
+    duration_sec = Column(Integer, nullable=True)
+    metadata_json = Column("metadata", JSONB, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)

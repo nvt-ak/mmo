@@ -1,5 +1,9 @@
 import type {
   BatchListResponse,
+  FinalVideoListResponse,
+  MergeEnqueueResponse,
+  MergeJob,
+  MergePoolResponse,
   BulkVideoReviewResponse,
   ChannelListResponse,
   ExperimentListResponse,
@@ -205,6 +209,32 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ video_ids: videoIds, action }),
     }),
+
+  listMergePool: (params?: { suggestion_id?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.suggestion_id) q.set("suggestion_id", params.suggestion_id);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return apiFetch<MergePoolResponse>(`/api/v1/merge/pool${qs ? `?${qs}` : ""}`);
+  },
+
+  enqueueManualMerge: (videoIds: [string, string]) =>
+    apiFetch<MergeEnqueueResponse>("/api/v1/merge/manual", {
+      method: "POST",
+      body: JSON.stringify({ video_ids: videoIds }),
+    }),
+
+  enqueueRandomMerge: (suggestionId?: string) =>
+    apiFetch<MergeEnqueueResponse>("/api/v1/merge/random", {
+      method: "POST",
+      body: JSON.stringify({ suggestion_id: suggestionId }),
+    }),
+
+  getMergeJob: (jobId: string) =>
+    apiFetch<MergeJob>(`/api/v1/merge/jobs/${jobId}`),
+
+  listFinals: (limit = 50) =>
+    apiFetch<FinalVideoListResponse>(`/api/v1/finals?limit=${limit}`),
 };
 
 export { ApiError };

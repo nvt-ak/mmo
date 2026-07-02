@@ -4,6 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api/client";
 import type { BatchVideoAsset, VideoReviewStatus } from "@/lib/api/types";
+import { ActionBar } from "@/components/shared/action-bar";
+import { EmptyState } from "@/components/shared/empty-state";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatPill } from "@/components/shared/stat-pill";
+import { TabBar } from "@/components/shared/tab-bar";
 
 const TABS: { status: VideoReviewStatus; label: string }[] = [
   { status: "pending", label: "Pending" },
@@ -80,109 +85,88 @@ export function BatchPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="border-b border-[var(--border)] bg-white px-8 py-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-zinc-900">Daily Batch</h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              Keep videos for merge · Skip to exclude
-            </p>
-          </div>
-          {data && (
-            <dl className="flex gap-4 text-sm">
-              <div>
-                <dt className="text-zinc-400">Pending</dt>
-                <dd className="font-semibold text-amber-600">{data.pending_count}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-400">Kept</dt>
-                <dd className="font-semibold text-emerald-600">{data.in_pool_count}</dd>
-              </div>
-              <div>
-                <dt className="text-zinc-400">Skipped</dt>
-                <dd className="font-semibold text-zinc-600">{data.skipped_count}</dd>
-              </div>
-            </dl>
-          )}
-        </div>
+      <PageHeader
+        title="Daily batch"
+        description="Keep clips for merge. Skip the rest."
+        meta={
+          data ? (
+            <div className="flex flex-wrap gap-6">
+              <StatPill label="Pending" value={data.pending_count} tone="yellow" />
+              <StatPill label="Kept" value={data.in_pool_count} tone="green" />
+              <StatPill label="Skipped" value={data.skipped_count} tone="neutral" />
+            </div>
+          ) : null
+        }
+        tabs={
+          <TabBar
+            tabs={TABS.map((t) => ({ value: t.status, label: t.label }))}
+            value={status}
+            onChange={(next) => {
+              setStatus(next);
+              setSelected(new Set());
+            }}
+          />
+        }
+      />
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {TABS.map((tab) => (
-            <button
-              key={tab.status}
-              type="button"
-              onClick={() => {
-                setStatus(tab.status);
-                setSelected(new Set());
-              }}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                status === tab.status
-                  ? "bg-zinc-900 text-white"
-                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-          {isFetching && !isLoading && (
-            <span className="text-xs text-zinc-400">Refreshing…</span>
-          )}
-        </div>
+      {isFetching && !isLoading && (
+        <p className="border-b border-[var(--border)] px-8 py-2 font-mono text-xs text-[var(--muted)]">
+          Syncing batch
+        </p>
+      )}
 
-        {canBulkAct && (
-          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3">
-            <span className="text-sm text-zinc-600">{selectedIds.length} selected</span>
-            <button
-              type="button"
-              onClick={() => bulkMutation.mutate({ ids: selectedIds, action: "keep" })}
-              disabled={bulkMutation.isPending}
-              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              Keep all
-            </button>
-            <button
-              type="button"
-              onClick={() => bulkMutation.mutate({ ids: selectedIds, action: "skip" })}
-              disabled={bulkMutation.isPending}
-              className="rounded-lg bg-zinc-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
-            >
-              Skip all
-            </button>
-          </div>
-        )}
-      </header>
+      {canBulkAct && (
+        <ActionBar count={selectedIds.length}>
+          <button
+            type="button"
+            onClick={() => bulkMutation.mutate({ ids: selectedIds, action: "keep" })}
+            disabled={bulkMutation.isPending}
+            className="btn btn-primary"
+          >
+            Keep all
+          </button>
+          <button
+            type="button"
+            onClick={() => bulkMutation.mutate({ ids: selectedIds, action: "skip" })}
+            disabled={bulkMutation.isPending}
+            className="btn btn-secondary"
+          >
+            Skip all
+          </button>
+        </ActionBar>
+      )}
 
       <div className="flex-1 px-8 py-6">
-        {isLoading && <p className="text-sm text-zinc-500">Loading videos…</p>}
-        {isError && <p className="text-sm text-red-600">{(error as Error).message}</p>}
+        {isLoading && <p className="text-sm text-[var(--muted)]">Loading videos</p>}
+        {isError && (
+          <div className="surface-card bg-[var(--pastel-red-bg)] px-4 py-3 text-sm text-[var(--pastel-red-text)]">
+            {(error as Error).message}
+          </div>
+        )}
 
         {!isLoading && items.length === 0 && (
-          <div className="rounded-xl border border-dashed border-zinc-300 bg-white px-6 py-12 text-center">
-            <p className="text-sm font-medium text-zinc-700">No videos in this tab</p>
-            <p className="mt-1 text-sm text-zinc-500">
-              {status === "pending"
-                ? "Downloads appear here after keyword cascade completes."
-                : "Review pending videos to move them here."}
-            </p>
-          </div>
+          <EmptyState
+            title="Nothing here yet"
+            description={
+              status === "pending"
+                ? "Downloaded videos land here after keyword cascade completes."
+                : "Move pending videos with Keep or Skip to populate this tab."
+            }
+          />
         )}
 
         {items.length > 0 && status === "pending" && (
-          <label className="mb-4 flex items-center gap-2 text-sm text-zinc-600">
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={toggleAll}
-              className="rounded border-zinc-300"
-            />
+          <label className="mb-5 flex items-center gap-2 text-sm text-[var(--muted)]">
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
             Select all
           </label>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map((video) => (
+        <div className="grid gap-5 sm:grid-cols-2 2xl:grid-cols-3">
+          {items.map((video, index) => (
             <VideoCard
               key={video.id}
+              index={index}
               video={video}
               selectable={status === "pending"}
               selected={selected.has(video.id)}
@@ -200,6 +184,7 @@ export function BatchPage() {
 
 function VideoCard({
   video,
+  index,
   selectable,
   selected,
   onToggle,
@@ -208,6 +193,7 @@ function VideoCard({
   busy,
 }: {
   video: BatchVideoAsset;
+  index: number;
   selectable: boolean;
   selected: boolean;
   onToggle: () => void;
@@ -216,55 +202,52 @@ function VideoCard({
   busy: boolean;
 }) {
   return (
-    <article className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
-      <div className="relative aspect-video bg-zinc-100">
+    <article
+      className="surface-card stagger-item overflow-hidden"
+      style={{ ["--stagger-index" as string]: index }}
+    >
+      <div className="relative aspect-video bg-[var(--surface-muted)]">
         {video.thumbnail_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={video.thumbnail_url}
-            alt=""
+            alt={video.title}
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-zinc-400">
-            No thumbnail
+          <div className="flex h-full items-center justify-center text-xs text-[var(--muted)]">
+            No preview
           </div>
         )}
         {selectable && (
-          <label className="absolute left-2 top-2 rounded bg-black/50 p-1">
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={onToggle}
-              className="rounded"
-            />
+          <label className="absolute left-3 top-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)]/95 p-1.5">
+            <input type="checkbox" checked={selected} onChange={onToggle} />
           </label>
         )}
       </div>
-      <div className="space-y-2 p-4">
-        <h2 className="line-clamp-2 text-sm font-semibold text-zinc-900">{video.title}</h2>
-        <p className="text-xs text-zinc-500">
-          {video.channel_name ?? "Unknown channel"}
-          {video.keyword ? ` · ${video.keyword}` : ""}
-        </p>
-        <p className="text-xs text-zinc-400">
+      <div className="space-y-3 p-5">
+        <h2 className="line-clamp-2 text-sm font-medium leading-snug text-[var(--foreground-strong)]">
+          {video.title}
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          {video.keyword && <span className="tag-pill tag-blue">{video.keyword}</span>}
+          <span className="tag-pill bg-[var(--surface-muted)] text-[var(--muted)]">
+            {video.channel_name ?? "Unknown channel"}
+          </span>
+        </div>
+        <p className="font-mono text-xs text-[var(--muted)]">
           {formatViews(video.view_count)} views · {formatDuration(video.duration_sec)}
         </p>
         {selectable && (
           <div className="flex gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onKeep}
-              disabled={busy}
-              className="flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
+            <button type="button" onClick={onKeep} disabled={busy} className="btn btn-primary flex-1">
               Keep
             </button>
             <button
               type="button"
               onClick={onSkip}
               disabled={busy}
-              className="flex-1 rounded-lg border border-zinc-300 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="btn btn-secondary flex-1"
             >
               Skip
             </button>
@@ -274,9 +257,9 @@ function VideoCard({
           href={video.youtube_url}
           target="_blank"
           rel="noreferrer"
-          className="block text-xs text-indigo-600 hover:underline"
+          className="inline-block text-xs text-[var(--pastel-blue-text)] hover:underline"
         >
-          Open on YouTube
+          Open source video
         </a>
       </div>
     </article>

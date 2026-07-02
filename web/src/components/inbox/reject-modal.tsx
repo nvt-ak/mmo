@@ -28,9 +28,9 @@ export function RejectModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <form
-        className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+        className="surface-card w-full max-w-md p-6 animate-fade-rise"
         onSubmit={(e) => {
           e.preventDefault();
           const fd = new FormData(e.currentTarget);
@@ -40,17 +40,17 @@ export function RejectModal({
           );
         }}
       >
-        <h2 className="text-lg font-semibold text-zinc-900">
+        <h2 className="font-editorial text-2xl text-[var(--foreground-strong)]">
           Reject {count} keyword{count !== 1 ? "s" : ""}
         </h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          Feedback trains the learning agent immediately.
+        <p className="mt-2 text-sm text-[var(--muted)]">
+          Reason is stored for the learning agent.
         </p>
-        <label className="mt-4 block text-sm font-medium text-zinc-700">
+        <label className="mt-5 block text-sm font-medium text-[var(--foreground)]">
           Reason
           <select
             name="reason"
-            className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+            className="field-input mt-1.5"
             defaultValue="too_broad"
           >
             {REASONS.map((r) => (
@@ -60,29 +60,21 @@ export function RejectModal({
             ))}
           </select>
         </label>
-        <label className="mt-3 block text-sm font-medium text-zinc-700">
+        <label className="mt-3 block text-sm font-medium text-[var(--foreground)]">
           Note (optional)
           <textarea
             name="note"
             rows={3}
-            className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-            placeholder="Why these keywords don't fit..."
+            className="field-input mt-1.5"
+            placeholder="Why these keywords do not fit"
           />
         </label>
         <div className="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-100"
-          >
+          <button type="button" onClick={onClose} className="btn btn-ghost">
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-          >
-            {loading ? "Rejecting..." : "Reject"}
+          <button type="submit" disabled={loading} className="btn btn-primary">
+            {loading ? "Rejecting" : "Reject"}
           </button>
         </div>
       </form>

@@ -4,7 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api/client";
 import type { RejectReason, Suggestion, SuggestionStatus } from "@/lib/api/types";
+import { ActionBar } from "@/components/shared/action-bar";
+import { EmptyState } from "@/components/shared/empty-state";
+import { PageHeader } from "@/components/shared/page-header";
 import { ScoreBadge } from "@/components/shared/score-badge";
+import { TabBar } from "@/components/shared/tab-bar";
 import { RejectModal } from "./reject-modal";
 import { ReportDialog } from "./report-dialog";
 
@@ -91,155 +95,158 @@ export function InboxPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="border-b border-[var(--border)] bg-white px-8 py-6">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-zinc-900">Inbox</h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              Review keyword suggestions from daily scans
-              {isFetching && !isLoading ? " · refreshing…" : ""}
-            </p>
-          </div>
+      <PageHeader
+        title="Inbox"
+        description="Review keyword suggestions from daily channel scans."
+        toolbar={
           <input
             type="search"
-            placeholder="Search keywords…"
+            placeholder="Filter keywords"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full max-w-xs rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+            className="field-input w-full min-w-[220px] max-w-xs"
           />
-        </div>
-        <div className="mt-4 flex gap-1">
-          {TABS.map((tab) => (
-            <button
-              key={tab.status}
-              type="button"
-              onClick={() => {
-                setStatus(tab.status);
-                setSelected(new Set());
-              }}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                status === tab.status
-                  ? "bg-zinc-900 text-white"
-                  : "text-zinc-600 hover:bg-zinc-100"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </header>
+        }
+        tabs={
+          <TabBar
+            tabs={TABS.map((t) => ({ value: t.status, label: t.label }))}
+            value={status}
+            onChange={(next) => {
+              setStatus(next);
+              setSelected(new Set());
+            }}
+          />
+        }
+      />
+
+      {isFetching && !isLoading && (
+        <p className="border-b border-[var(--border)] px-8 py-2 font-mono text-xs text-[var(--muted)]">
+          Syncing inbox
+        </p>
+      )}
 
       {status === "pending" && selectedIds.length > 0 && (
-        <div className="flex items-center gap-2 border-b border-[var(--border)] bg-zinc-50 px-8 py-3">
-          <span className="text-sm text-zinc-600">{selectedIds.length} selected</span>
+        <ActionBar count={selectedIds.length}>
           <button
             type="button"
             onClick={() => approveMutation.mutate(selectedIds)}
             disabled={approveMutation.isPending}
-            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            className="btn btn-primary"
           >
             Approve
           </button>
           <button
             type="button"
             onClick={() => setRejectOpen(true)}
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-white"
+            className="btn btn-secondary"
           >
             Reject
           </button>
-        </div>
+        </ActionBar>
       )}
 
-      <div className="flex-1 overflow-auto px-8 py-4">
+      <div className="flex-1 overflow-auto px-8 py-6">
         {isLoading && (
-          <p className="text-sm text-zinc-500">Loading suggestions…</p>
+          <p className="text-sm text-[var(--muted)]">Loading suggestions</p>
         )}
         {isError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            {(error as Error).message}. Is the API running on port 8000?
+          <div className="surface-card border-[var(--pastel-red-bg)] bg-[var(--pastel-red-bg)] px-4 py-3 text-sm text-[var(--pastel-red-text)]">
+            {(error as Error).message}. Check API on port 8000.
           </div>
         )}
         {!isLoading && !isError && items.length === 0 && (
-          <p className="text-sm text-zinc-500">No {status} suggestions.</p>
+          <EmptyState
+            title={`No ${status} keywords`}
+            description="Run a scan or adjust filters to populate this view."
+          />
         )}
 
         {items.length > 0 && (
-          <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500">
-                {status === "pending" && (
-                  <th className="w-10 py-3 pr-2">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleAll}
-                      aria-label="Select all"
-                    />
-                  </th>
-                )}
-                <th className="py-3 pr-4 font-medium">Keyword</th>
-                <th className="py-3 pr-4 font-medium">Score</th>
-                <th className="py-3 pr-4 font-medium">TikTok</th>
-                <th className="py-3 pr-4 font-medium">Created</th>
-                <th className="py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-b border-zinc-100 hover:bg-zinc-50/80">
+          <div className="surface-card overflow-hidden animate-fade-rise">
+            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)] text-xs uppercase tracking-wider text-[var(--muted)]">
                   {status === "pending" && (
-                    <td className="py-3 pr-2">
+                    <th className="w-10 px-4 py-3">
                       <input
                         type="checkbox"
-                        checked={selected.has(item.id)}
-                        onChange={() => toggleOne(item.id)}
-                        aria-label={`Select ${item.keyword}`}
+                        checked={allSelected}
+                        onChange={toggleAll}
+                        aria-label="Select all"
                       />
-                    </td>
+                    </th>
                   )}
-                  <td className="max-w-md py-3 pr-4 font-medium text-zinc-900">
-                    {item.keyword}
-                  </td>
-                  <td className="py-3 pr-4">
-                    <ScoreBadge score={item.final_score} />
-                  </td>
-                  <td className="py-3 pr-4 capitalize text-zinc-600">
-                    {item.tiktok_status ?? "—"}
-                    {item.tiktok_count_at_suggest != null && (
-                      <span className="text-zinc-400"> ({item.tiktok_count_at_suggest})</span>
-                    )}
-                  </td>
-                  <td className="py-3 pr-4 text-zinc-500">
-                    {new Date(item.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="py-3">
-                    {status === "approved" && (
-                      <button
-                        type="button"
-                        onClick={() => setReportTarget(item)}
-                        className="text-sm font-medium text-emerald-700 hover:underline"
-                      >
-                        Report
-                      </button>
-                    )}
-                    {status === "reported" && (
-                      <button
-                        type="button"
-                        onClick={() => improveMutation.mutate(item.id)}
-                        disabled={improveMutation.isPending}
-                        className="text-sm font-medium text-indigo-700 hover:underline disabled:opacity-50"
-                      >
-                        Improve
-                      </button>
-                    )}
-                  </td>
+                  <th className="px-4 py-3 font-medium">Keyword</th>
+                  <th className="px-4 py-3 font-medium">Score</th>
+                  <th className="px-4 py-3 font-medium">TikTok</th>
+                  <th className="px-4 py-3 font-medium">Created</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((item, index) => (
+                  <tr
+                    key={item.id}
+                    className="stagger-item border-b border-[var(--border-subtle)] last:border-b-0 hover:bg-[var(--surface-muted)]/60"
+                    style={{ ["--stagger-index" as string]: index }}
+                  >
+                    {status === "pending" && (
+                      <td className="px-4 py-3.5">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(item.id)}
+                          onChange={() => toggleOne(item.id)}
+                          aria-label={`Select ${item.keyword}`}
+                        />
+                      </td>
+                    )}
+                    <td className="max-w-md px-4 py-3.5 font-medium text-[var(--foreground-strong)]">
+                      {item.keyword}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <ScoreBadge score={item.final_score} />
+                    </td>
+                    <td className="px-4 py-3.5 capitalize text-[var(--muted)]">
+                      {item.tiktok_status ?? "—"}
+                      {item.tiktok_count_at_suggest != null && (
+                        <span className="font-mono text-xs">
+                          {" "}
+                          ({item.tiktok_count_at_suggest})
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5 font-mono text-xs text-[var(--muted)]">
+                      {new Date(item.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      {status === "approved" && (
+                        <button
+                          type="button"
+                          onClick={() => setReportTarget(item)}
+                          className="btn btn-ghost px-2 py-1 text-[var(--pastel-green-text)]"
+                        >
+                          Report
+                        </button>
+                      )}
+                      {status === "reported" && (
+                        <button
+                          type="button"
+                          onClick={() => improveMutation.mutate(item.id)}
+                          disabled={improveMutation.isPending}
+                          className="btn btn-ghost px-2 py-1 text-[var(--pastel-blue-text)] disabled:opacity-50"
+                        >
+                          Improve
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
         {data && data.total > items.length && (
-          <p className="mt-4 text-xs text-zinc-400">
+          <p className="mt-4 font-mono text-xs text-[var(--muted)]">
             Showing {items.length} of {data.total}
           </p>
         )}

@@ -1,24 +1,190 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafafa;
-  --foreground: #18181b;
-  --surface: #f4f4f5;
-  --border: #e4e4e7;
-  --sidebar: #0f172a;
-  --sidebar-text: #94a3b8;
-  --muted: #64748b;
-  --accent-muted: rgba(16, 185, 129, 0.15);
+  --canvas: #f7f6f3;
+  --surface: #ffffff;
+  --surface-muted: #f9f9f8;
+  --foreground: #2f3437;
+  --foreground-strong: #111111;
+  --muted: #787774;
+  --border: #eaeaea;
+  --border-subtle: rgba(0, 0, 0, 0.06);
+
+  --pastel-red-bg: #fdebec;
+  --pastel-red-text: #9f2f2d;
+  --pastel-blue-bg: #e1f3fe;
+  --pastel-blue-text: #1f6c9f;
+  --pastel-green-bg: #edf3ec;
+  --pastel-green-text: #346538;
+  --pastel-yellow-bg: #fbf3db;
+  --pastel-yellow-text: #956400;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
+  --color-background: var(--canvas);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
+  --font-serif: var(--font-newsreader);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
+  background: var(--canvas);
   color: var(--foreground);
+  line-height: 1.6;
+}
+
+.font-editorial {
+  font-family: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  letter-spacing: -0.02em;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-rise {
+  animation: fade-rise 600ms var(--motion-ease) both;
+}
+
+.stagger-item {
+  animation: fade-rise 600ms var(--motion-ease) both;
+  animation-delay: calc(var(--stagger-index, 0) * 80ms);
+}
+
+.surface-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  transition:
+    box-shadow 200ms var(--motion-ease),
+    transform 200ms var(--motion-ease);
+}
+
+.surface-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  padding: 0.5rem 0.875rem;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease,
+    transform 100ms ease;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--foreground-strong);
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #333333;
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--foreground);
+}
+
+.field-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--foreground);
+  transition: border-color 150ms ease;
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tag-green {
+  background: var(--pastel-green-bg);
+  color: var(--pastel-green-text);
+}
+
+.tag-yellow {
+  background: var(--pastel-yellow-bg);
+  color: var(--pastel-yellow-text);
+}
+
+.tag-blue {
+  background: var(--pastel-blue-bg);
+  color: var(--pastel-blue-text);
+}
+
+.tag-red {
+  background: var(--pastel-red-bg);
+  color: var(--pastel-red-text);
+}
+
+.ambient-glow {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(251, 243, 219, 0.35), transparent 42%),
+    radial-gradient(circle at 88% 18%, rgba(225, 243, 254, 0.28), transparent 38%);
 }
