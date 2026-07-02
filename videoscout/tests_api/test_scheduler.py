@@ -114,6 +114,8 @@ def test_init_scheduler_registers_daily_digest_job(monkeypatch):
     job = sched.get_job("daily_digest")
     assert job is not None
     assert job.id == "daily_digest"
+    watcher_job = sched.get_job("channel_watcher")
+    assert watcher_job is not None
 
 
 def test_cron_trigger_fires_at_configured_time(monkeypatch):
@@ -143,12 +145,12 @@ def test_cron_trigger_rolls_to_next_day_after_time(monkeypatch):
 def test_replace_existing_job_on_reinit(monkeypatch):
     monkeypatch.setenv("SCHEDULE_TIME", "08:00")
     sched1 = init_scheduler()
-    assert len(sched1.get_jobs()) == 1
+    assert len(sched1.get_jobs()) == 2
 
     monkeypatch.setenv("SCHEDULE_TIME", "10:00")
     sched2 = init_scheduler()
     assert sched2 is sched1
-    assert len(sched2.get_jobs()) == 1
+    assert len(sched2.get_jobs()) == 2
 
     job = sched2.get_job("daily_digest")
     next_fire = job.trigger.get_next_fire_time(None, datetime(2026, 7, 2, 7, 0))

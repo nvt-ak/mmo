@@ -407,3 +407,94 @@ class KeywordCascadeJobModel(Base):
             "created_at",
         ),
     )
+
+
+class VideoAssetModel(Base):
+    """Downloaded video asset linked to channel and optional suggestion."""
+
+    __tablename__ = "video_assets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    youtube_video_id = Column(String(255), nullable=False, unique=True, index=True)
+    channel_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("channels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    suggestion_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("suggestions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    title = Column(String(500), nullable=False)
+    view_count = Column(Integer, nullable=True, default=0)
+    duration_sec = Column(Integer, nullable=True, default=0)
+    youtube_url = Column(String(500), nullable=False)
+    file_path = Column(String(1000), nullable=False)
+    status = Column(String(50), nullable=False, default="downloaded", index=True)
+    review_status = Column(String(50), nullable=False, default="pending", index=True)
+    downloaded_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    metadata_json = Column("metadata", JSONB, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('downloaded', 'failed', 'queued')",
+            name="ck_video_assets_status",
+        ),
+        CheckConstraint(
+            "review_status IN ('pending', 'in_pool', 'skipped')",
+            name="ck_video_assets_review_status",
+        ),
+        Index(
+            "idx_video_assets_suggestion_review",
+            "suggestion_id",
+            "review_status",
+        ),
+    )
+
+
+class DownloadJobModel(Base):
+    """Bulk/watcher ingestion job status tracking."""
+
+    __tablename__ = "download_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_type = Column(String(50), nullable=False, index=True)
+    suggestion_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("suggestions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    cascade_job_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("keyword_cascade_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    status = Column(String(50), nullable=False, default="started", index=True)
+    channels_total = Column(Integer, nullable=False, default=0)
+    videos_found = Column(Integer, nullable=False, default=0)
+    videos_downloaded = Column(Integer, nullable=False, default=0)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "job_type IN ('bulk', 'watcher')",
+            name="ck_download_jobs_job_type",
+        ),
+        CheckConstraint(
+            "status IN ('started', 'running', 'completed', 'failed')",
+            name="ck_download_jobs_status",
+        ),
+        Index(
+            "idx_download_jobs_type_created",
+            "job_type",
+            "created_at",
+        ),
+    )

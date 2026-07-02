@@ -15,7 +15,7 @@ Active stories for VideoScout. Create story packets before implementation
 | E03 Quality | E2E + production hardening | planned |
 | E04 Keyword Intelligence v2 | M1 complete — agent + KB + experiments on web | **R1 done** |
 | E05 Channel Cascade | M2 — discover + subscribe on keyword approve | implemented (R2 partial) |
-| E06 Ingestion | M3 — download + channel watcher | planned (R3) |
+| E06 Ingestion | M3 — download + channel watcher | implemented (R3) |
 | E07 Batch & Merge | M3b + M4 — review UI + ffmpeg merge | planned (R4–R5) |
 | E08 Feedback | M5 — TikTok performance reports on web | planned (R6) |
 
@@ -33,8 +33,8 @@ Active stories for VideoScout. Create story packets before implementation
 | US-013 | Web experiments & report UI | E04 | normal | implemented |
 | US-020 | Discover channels by keyword | E05 | high-risk | implemented |
 | US-021 | Keyword approve cascade job | E05 | high-risk | implemented |
-| US-030 | yt-dlp bulk download service | E06 | high-risk | planned |
-| US-031 | Channel new-video watcher | E06 | normal | planned |
+| US-030 | yt-dlp bulk download service | E06 | high-risk | implemented |
+| US-031 | Channel new-video watcher | E06 | normal | implemented |
 | US-040 | Daily batch review UI (`/batch`) | E07 | normal | planned |
 | US-041 | Merge engine + `/merge` UI | E07 | normal | planned |
 | US-050 | TikTok performance report form | E08 | normal | planned |

@@ -20,6 +20,7 @@ from videoscout.api import (
     experiments,
     performance,
     cascade,
+    downloads,
 )
 from videoscout.scheduler import init_scheduler, shutdown_scheduler
 
@@ -93,6 +94,7 @@ app.include_router(settings.router, prefix="/api/v1", tags=["settings"])
 app.include_router(experiments.router, prefix="/api/v1", tags=["experiments"])
 app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
 app.include_router(cascade.router, prefix="/api/v1", tags=["cascade"])
+app.include_router(downloads.router, prefix="/api/v1", tags=["downloads"])
 
 
 if __name__ == "__main__":

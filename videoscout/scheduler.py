@@ -125,6 +125,7 @@ def init_scheduler() -> Optional[object]:
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
+        from apscheduler.triggers.interval import IntervalTrigger
     except ImportError:
         logger.warning("APScheduler not installed — skipping daily cron")
         return None
@@ -134,14 +135,25 @@ def init_scheduler() -> Optional[object]:
 
     if scheduler.get_job("daily_digest"):
         scheduler.remove_job("daily_digest")
+    if scheduler.get_job("channel_watcher"):
+        scheduler.remove_job("channel_watcher")
 
     scheduler.add_job(
         _run_scheduled_daily_digest,
         CronTrigger(hour=hour, minute=minute),
         id="daily_digest",
     )
+    from videoscout.workers.channel_watcher import run_channel_watcher
+    scheduler.add_job(
+        run_channel_watcher,
+        IntervalTrigger(hours=6),
+        id="channel_watcher",
+    )
 
-    logger.info("Scheduler initialized — daily digest at %s", schedule_time)
+    logger.info(
+        "Scheduler initialized — daily digest at %s + watcher every 6h",
+        schedule_time,
+    )
     return scheduler
 
 

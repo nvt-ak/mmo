@@ -8,8 +8,10 @@ from videoscout.db.models import (
     ChannelModel,
     ChannelKeywordLinkModel,
     KeywordCascadeJobModel,
+    DownloadJobModel,
 )
 from videoscout.core_engine.channel_discovery import discover_channels
+from videoscout.workers.bulk_download import run_bulk_download
 
 logger = logging.getLogger(__name__)
 
@@ -84,11 +86,22 @@ def run_keyword_cascade(job_id: str) -> None:
                     )
                 )
 
+        download_job = DownloadJobModel(
+            job_type="bulk",
+            suggestion_id=suggestion.id,
+            cascade_job_id=job.id,
+            status="started",
+            channels_total=subscribed_count,
+        )
+        db.add(download_job)
+        db.flush()
+
         job.channels_discovered = discovered_count
         job.channels_subscribed = subscribed_count
         job.status = "completed"
         job.completed_at = datetime.utcnow()
         db.commit()
+        run_bulk_download(str(download_job.id))
     except Exception as exc:  # pragma: no cover - defensive path
         db.rollback()
         logger.exception("Keyword cascade failed for job %s", job_id)

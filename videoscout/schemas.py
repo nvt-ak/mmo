@@ -271,6 +271,43 @@ class CascadeJobResponse(BaseModel):
     completed_at: Optional[datetime] = None
 
 
+class DownloadJobResponse(BaseModel):
+    id: str
+    job_type: str
+    suggestion_id: Optional[str] = None
+    cascade_job_id: Optional[str] = None
+    status: str
+    channels_total: int
+    videos_found: int
+    videos_downloaded: int
+    error_message: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class VideoAsset(BaseModel):
+    id: str
+    youtube_video_id: str
+    channel_id: str
+    suggestion_id: Optional[str] = None
+    title: str
+    view_count: Optional[int] = 0
+    duration_sec: Optional[int] = 0
+    youtube_url: str
+    file_path: str
+    status: str
+    review_status: str
+    downloaded_at: datetime
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class VideoAssetListResponse(BaseModel):
+    items: List[VideoAsset]
+    total: int
+    limit: int
+
+
 # Learning
 class RejectionPattern(BaseModel):
     reason: str
