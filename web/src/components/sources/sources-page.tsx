@@ -3,6 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/lib/api/client";
+import { EmptyState } from "@/components/shared/empty-state";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatPill } from "@/components/shared/stat-pill";
 
 export function SourcesPage() {
   const queryClient = useQueryClient();
@@ -28,7 +31,7 @@ export function SourcesPage() {
 
   const scanMutation = useMutation({
     mutationFn: () => api.runScan(true),
-    onSuccess: (res) => setMessage(`Scan started (job ${res.job_id.slice(0, 8)}…)`),
+    onSuccess: (res) => setMessage(`Scan started (job ${res.job_id.slice(0, 8)})`),
     onError: (e: Error) => setMessage(e.message),
   });
 
@@ -43,32 +46,48 @@ export function SourcesPage() {
     onSuccess: invalidate,
   });
 
+  const channels = data?.items ?? [];
+  const enabledCount = channels.filter((ch) => ch.scan_enabled).length;
+
   return (
     <div className="flex flex-1 flex-col">
-      <header className="border-b border-[var(--border)] bg-white px-8 py-6">
-        <h1 className="text-2xl font-semibold text-zinc-900">Sources</h1>
-        <p className="mt-1 text-sm text-zinc-500">Manage YouTube channels for daily digest</p>
-      </header>
+      <PageHeader
+        title="Sources"
+        description="YouTube channels linked to keyword discovery and ingestion."
+        meta={
+          data ? (
+            <div className="flex flex-wrap gap-6">
+              <StatPill label="Channels" value={data.total} tone="blue" />
+              <StatPill label="Scan enabled" value={enabledCount} tone="green" />
+            </div>
+          ) : null
+        }
+      />
 
       <div className="space-y-6 px-8 py-6">
         {message && (
-          <p className="rounded-lg bg-zinc-100 px-4 py-2 text-sm text-zinc-700">{message}</p>
+          <p className="surface-card bg-[var(--surface-muted)] px-4 py-2 text-sm text-[var(--foreground)]">
+            {message}
+          </p>
         )}
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-5">
-          <h2 className="text-sm font-semibold text-zinc-900">Add channel</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
+        <section className="surface-card p-6 animate-fade-rise">
+          <h2 className="font-editorial text-xl text-[var(--foreground-strong)]">Add channel</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Handle, channel ID, or full YouTube URL.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
             <input
               value={channelInput}
               onChange={(e) => setChannelInput(e.target.value)}
-              placeholder="@handle or UC… or youtube.com/channel/…"
-              className="min-w-[280px] flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+              placeholder="@handle or UC channel id"
+              className="field-input min-w-[280px] flex-1"
             />
             <button
               type="button"
               onClick={() => addMutation.mutate()}
               disabled={!channelInput.trim() || addMutation.isPending}
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="btn btn-primary"
             >
               Add
             </button>
@@ -76,75 +95,91 @@ export function SourcesPage() {
               type="button"
               onClick={() => scanMutation.mutate()}
               disabled={scanMutation.isPending}
-              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="btn btn-secondary"
             >
-              Run scan now
+              Run scan
             </button>
           </div>
         </section>
 
-        {isLoading && <p className="text-sm text-zinc-500">Loading channels…</p>}
+        {isLoading && <p className="text-sm text-[var(--muted)]">Loading channels</p>}
         {isError && (
-          <p className="text-sm text-red-600">{(error as Error).message}</p>
+          <div className="surface-card bg-[var(--pastel-red-bg)] px-4 py-3 text-sm text-[var(--pastel-red-text)]">
+            {(error as Error).message}
+          </div>
         )}
 
-        <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500">
-              <tr>
-                <th className="px-4 py-3 font-medium">Channel</th>
-                <th className="px-4 py-3 font-medium">Scan</th>
-                <th className="px-4 py-3 font-medium">Last scan</th>
-                <th className="px-4 py-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data?.items ?? []).map((ch) => (
-                <tr key={ch.id} className="border-b border-zinc-100">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-zinc-900">{ch.name || ch.channel_id}</p>
-                    <p className="text-xs text-zinc-400">{ch.channel_id}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        toggleMutation.mutate({
-                          id: ch.channel_id,
-                          enabled: !ch.scan_enabled,
-                        })
-                      }
-                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        ch.scan_enabled
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-zinc-100 text-zinc-600"
-                      }`}
-                    >
-                      {ch.scan_enabled ? "Enabled" : "Disabled"}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-zinc-500">
-                    {ch.last_scan_at
-                      ? new Date(ch.last_scan_at).toLocaleString()
-                      : "Never"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => deleteMutation.mutate(ch.channel_id)}
-                      className="text-xs text-red-600 hover:underline"
-                    >
-                      Remove
-                    </button>
-                  </td>
+        {!isLoading && !isError && channels.length === 0 && (
+          <EmptyState
+            title="No channels yet"
+            description="Add a channel manually or approve keywords to auto-subscribe from cascade."
+          />
+        )}
+
+        {channels.length > 0 && (
+          <div className="surface-card overflow-hidden animate-fade-rise">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-[var(--border)] bg-[var(--surface-muted)] text-xs uppercase tracking-wider text-[var(--muted)]">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Channel</th>
+                  <th className="px-4 py-3 font-medium">Scan</th>
+                  <th className="px-4 py-3 font-medium">Videos</th>
+                  <th className="px-4 py-3 font-medium">Last scan</th>
+                  <th className="px-4 py-3 font-medium"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {data?.total === 0 && (
-            <p className="px-4 py-8 text-center text-sm text-zinc-500">No channels yet.</p>
-          )}
-        </section>
+              </thead>
+              <tbody>
+                {channels.map((ch, index) => (
+                  <tr
+                    key={ch.id}
+                    className="stagger-item border-b border-[var(--border-subtle)] last:border-b-0"
+                    style={{ ["--stagger-index" as string]: index }}
+                  >
+                    <td className="px-4 py-3.5">
+                      <p className="font-medium text-[var(--foreground-strong)]">
+                        {ch.name || ch.channel_id}
+                      </p>
+                      <p className="font-mono text-xs text-[var(--muted)]">{ch.channel_id}</p>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleMutation.mutate({
+                            id: ch.channel_id,
+                            enabled: !ch.scan_enabled,
+                          })
+                        }
+                        className={`tag-pill ${
+                          ch.scan_enabled ? "tag-green" : "bg-[var(--surface-muted)] text-[var(--muted)]"
+                        }`}
+                      >
+                        {ch.scan_enabled ? "Enabled" : "Disabled"}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3.5 font-mono text-xs text-[var(--muted)]">
+                      {ch.video_count}
+                    </td>
+                    <td className="px-4 py-3.5 font-mono text-xs text-[var(--muted)]">
+                      {ch.last_scan_at
+                        ? new Date(ch.last_scan_at).toLocaleString()
+                        : "Never"}
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => deleteMutation.mutate(ch.channel_id)}
+                        className="btn btn-ghost px-2 py-1 text-[var(--pastel-red-text)]"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

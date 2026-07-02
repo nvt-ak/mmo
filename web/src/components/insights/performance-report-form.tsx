@@ -10,6 +10,12 @@ interface PerformanceReportFormProps {
   onSubmitted?: () => void;
 }
 
+const OUTCOME_TAG: Record<Outcome, string> = {
+  success: "tag-green",
+  neutral: "tag-yellow",
+  failure: "tag-red",
+};
+
 export function PerformanceReportForm({ onSubmitted }: PerformanceReportFormProps) {
   const [keyword, setKeyword] = useState("");
   const [views, setViews] = useState("0");
@@ -57,28 +63,36 @@ export function PerformanceReportForm({ onSubmitted }: PerformanceReportFormProp
   });
 
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-5">
-      <h2 className="text-sm font-semibold text-zinc-900">Report performance</h2>
-      <p className="mt-1 text-xs text-zinc-500">
-        Pick an approved keyword or enter one manually.
+    <section className="surface-card p-6 animate-fade-rise">
+      <h2 className="font-editorial text-xl text-[var(--foreground-strong)]">
+        Report performance
+      </h2>
+      <p className="mt-1 text-sm text-[var(--muted)]">
+        Tie TikTok results back to an approved keyword for agent learning.
       </p>
 
-      {message && <p className="mt-3 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700">{message}</p>}
+      {message && (
+        <p className="mt-4 surface-card bg-[var(--pastel-green-bg)] px-3 py-2 text-sm text-[var(--pastel-green-text)]">
+          {message}
+        </p>
+      )}
       {approvedSuggestions.isError && (
-        <p className="mt-3 text-sm text-red-600">
+        <p className="mt-4 text-sm text-[var(--pastel-red-text)]">
           {(approvedSuggestions.error as Error).message}
         </p>
       )}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <label className="sm:col-span-2">
-          <span className="mb-1 block text-xs font-medium uppercase text-zinc-500">Keyword</span>
+          <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
+            Keyword
+          </span>
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             list="approved-keyword-options"
-            placeholder="e.g. ai storytelling hooks"
-            className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+            placeholder="ai storytelling hooks"
+            className="field-input"
           />
           <datalist id="approved-keyword-options">
             {(approvedSuggestions.data?.items ?? []).map((item) => (
@@ -87,61 +101,42 @@ export function PerformanceReportForm({ onSubmitted }: PerformanceReportFormProp
           </datalist>
         </label>
 
-        <label>
-          <span className="mb-1 block text-xs font-medium uppercase text-zinc-500">Views</span>
-          <input
-            type="number"
-            min={0}
-            value={views}
-            onChange={(e) => setViews(e.target.value)}
-            className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-          />
-        </label>
-
-        <label>
-          <span className="mb-1 block text-xs font-medium uppercase text-zinc-500">Likes</span>
-          <input
-            type="number"
-            min={0}
-            value={likes}
-            onChange={(e) => setLikes(e.target.value)}
-            className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-          />
-        </label>
-
-        <label>
-          <span className="mb-1 block text-xs font-medium uppercase text-zinc-500">Comments</span>
-          <input
-            type="number"
-            min={0}
-            value={comments}
-            onChange={(e) => setComments(e.target.value)}
-            className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-          />
-        </label>
-
-        <label>
-          <span className="mb-1 block text-xs font-medium uppercase text-zinc-500">Followers gained</span>
-          <input
-            type="number"
-            min={0}
-            value={followersGained}
-            onChange={(e) => setFollowersGained(e.target.value)}
-            className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-          />
-        </label>
+        {(
+          [
+            ["Views", views, setViews],
+            ["Likes", likes, setLikes],
+            ["Comments", comments, setComments],
+            ["Followers gained", followersGained, setFollowersGained],
+          ] as const
+        ).map(([label, value, setter]) => (
+          <label key={label}>
+            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
+              {label}
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={value}
+              onChange={(e) => setter(e.target.value)}
+              className="field-input"
+            />
+          </label>
+        ))}
 
         <label className="sm:col-span-2">
-          <span className="mb-1 block text-xs font-medium uppercase text-zinc-500">Outcome</span>
+          <span className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
+            Outcome
+          </span>
           <select
             value={outcome}
             onChange={(e) => setOutcome(e.target.value as Outcome)}
-            className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+            className="field-input"
           >
             <option value="success">Success</option>
             <option value="neutral">Neutral</option>
             <option value="failure">Failure</option>
           </select>
+          <span className={`tag-pill mt-2 inline-flex ${OUTCOME_TAG[outcome]}`}>{outcome}</span>
         </label>
       </div>
 
@@ -154,9 +149,9 @@ export function PerformanceReportForm({ onSubmitted }: PerformanceReportFormProp
           Number.isNaN(Number(views)) ||
           Number(views) < 0
         }
-        className="mt-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        className="btn btn-primary mt-5"
       >
-        {reportMutation.isPending ? "Submitting…" : "Submit report"}
+        {reportMutation.isPending ? "Submitting" : "Submit report"}
       </button>
     </section>
   );

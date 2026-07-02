@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/lib/api/client";
 import type { ScoringWeights } from "@/lib/api/types";
+import { PageHeader } from "@/components/shared/page-header";
 
 const WEIGHT_LABELS: Record<keyof ScoringWeights, string> = {
   relevance: "Relevance",
@@ -37,16 +38,21 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
     },
   });
 
+  const weightSum = Object.values(weights).reduce((a, b) => a + b, 0);
+
   return (
-    <>
-      <section className="rounded-xl border border-zinc-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-zinc-900">Scoring weights</h2>
-        <div className="mt-4 space-y-4">
+    <div className="space-y-6">
+      <section className="surface-card p-6 animate-fade-rise">
+        <h2 className="font-editorial text-xl text-[var(--foreground-strong)]">Scoring weights</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Agent ranking blend. Total: {weightSum.toFixed(2)}
+        </p>
+        <div className="mt-5 space-y-5">
           {(Object.keys(WEIGHT_LABELS) as (keyof ScoringWeights)[]).map((key) => (
             <label key={key} className="block">
               <div className="flex justify-between text-sm">
-                <span className="text-zinc-700">{WEIGHT_LABELS[key]}</span>
-                <span className="font-mono text-zinc-500">{weights[key].toFixed(2)}</span>
+                <span className="text-[var(--foreground)]">{WEIGHT_LABELS[key]}</span>
+                <span className="font-mono text-[var(--muted)]">{weights[key].toFixed(2)}</span>
               </div>
               <input
                 type="range"
@@ -57,33 +63,76 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
                 onChange={(e) =>
                   setWeights({ ...weights, [key]: Number(e.target.value) })
                 }
-                className="mt-1 w-full"
+                className="mt-2 w-full accent-[var(--foreground-strong)]"
               />
             </label>
           ))}
         </div>
       </section>
 
-      <section className="rounded-xl border border-zinc-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-zinc-900">Niche topics</h2>
-        <p className="mt-1 text-xs text-zinc-500">Comma-separated keywords</p>
+      <section className="surface-card p-6 animate-fade-rise">
+        <h2 className="font-editorial text-xl text-[var(--foreground-strong)]">Niche topics</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">Comma-separated focus areas for scans.</p>
         <input
           value={topics}
           onChange={(e) => setTopics(e.target.value)}
-          className="mt-3 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+          className="field-input mt-4"
           placeholder="AI, marketing, TikTok growth"
         />
+        {topics.trim() && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {topics
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean)
+              .map((topic) => (
+                <span key={topic} className="tag-pill tag-blue">
+                  {topic}
+                </span>
+              ))}
+          </div>
+        )}
+      </section>
+
+      <section className="surface-card p-6 animate-fade-rise">
+        <h2 className="font-editorial text-xl text-[var(--foreground-strong)]">Integrations</h2>
+        <dl className="mt-4 space-y-3 text-sm">
+          <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+            <dt className="text-[var(--muted)]">OpenAI API key</dt>
+            <dd>
+              <span className={`tag-pill ${initial.llm.api_key_set ? "tag-green" : "tag-yellow"}`}>
+                {initial.llm.api_key_set ? "Configured" : "Missing"}
+              </span>
+            </dd>
+          </div>
+          <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+            <dt className="text-[var(--muted)]">TikTok API key</dt>
+            <dd>
+              <span className={`tag-pill ${initial.tiktok.api_key_set ? "tag-green" : "tag-yellow"}`}>
+                {initial.tiktok.api_key_set ? "Configured" : "Missing"}
+              </span>
+            </dd>
+          </div>
+          <div className="flex items-center justify-between">
+            <dt className="text-[var(--muted)]">TikTok checks</dt>
+            <dd>
+              <span className={`tag-pill ${initial.tiktok.check_enabled ? "tag-green" : "bg-[var(--surface-muted)] text-[var(--muted)]"}`}>
+                {initial.tiktok.check_enabled ? "Enabled" : "Disabled"}
+              </span>
+            </dd>
+          </div>
+        </dl>
       </section>
 
       <button
         type="button"
         onClick={() => saveMutation.mutate()}
         disabled={saveMutation.isPending}
-        className="rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+        className="btn btn-primary"
       >
-        {saveMutation.isPending ? "Saving…" : saved ? "Saved ✓" : "Save settings"}
+        {saveMutation.isPending ? "Saving" : saved ? "Saved" : "Save settings"}
       </button>
-    </>
+    </div>
   );
 }
 
@@ -95,14 +144,18 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="border-b border-[var(--border)] bg-white px-8 py-6">
-        <h1 className="text-2xl font-semibold text-zinc-900">Settings</h1>
-        <p className="mt-1 text-sm text-zinc-500">Scoring weights and niche definition</p>
-      </header>
+      <PageHeader
+        title="Settings"
+        description="Scoring weights, niche definition, and integration status."
+      />
 
-      <div className="max-w-2xl space-y-8 px-8 py-6">
-        {isLoading && <p className="text-sm text-zinc-500">Loading…</p>}
-        {isError && <p className="text-sm text-red-600">{(error as Error).message}</p>}
+      <div className="max-w-2xl px-8 py-6">
+        {isLoading && <p className="text-sm text-[var(--muted)]">Loading settings</p>}
+        {isError && (
+          <div className="surface-card bg-[var(--pastel-red-bg)] px-4 py-3 text-sm text-[var(--pastel-red-text)]">
+            {(error as Error).message}
+          </div>
+        )}
 
         {data && (
           <SettingsForm
