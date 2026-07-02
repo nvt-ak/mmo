@@ -233,8 +233,14 @@ class DiscoveryJobResponse(BaseModel):
     job_type: str
     keyword_type_filter: str
     sources_scanned: int
+    videos_scanned: int = 0
+    candidates_checked: int = 0
     keywords_generated: int
     max_keywords: int = 10
+    max_videos: int = 10
+    progress_percent: int = 0
+    progress_phase: str = "starting"
+    progress_label: str = "Starting discovery…"
     error_message: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None

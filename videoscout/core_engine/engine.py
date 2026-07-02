@@ -269,7 +269,7 @@ Constraints:
                 }
 
             if result.get('error') or result.get('rate_limited'):
-                logger.warning(
+                logger.debug(
                     "TikTok unavailable for %r: %s",
                     keyword,
                     result.get('error') or 'rate_limited',
@@ -529,7 +529,33 @@ Constraints:
         try:
             result = await self.calculate_saturation(keyword)
             if result.get("gate_unavailable"):
-                raise RuntimeError("TikTok gate unavailable")
+                logger.warning(
+                    "TikTok gate unavailable for %r (%s)",
+                    keyword,
+                    gate_profile,
+                )
+                if gate_profile == "light":
+                    return {
+                        "surface": True,
+                        "tiktok_unverified": True,
+                        "score": 0.5,
+                        "tiktok_stats": {
+                            "video_count_7d": 0,
+                            "avg_views": 0.0,
+                            "avg_likes": 0.0,
+                            "avg_comments": 0.0,
+                            "saturation_tier": "moderate",
+                        },
+                        "tiktok_status": "moderate",
+                    }
+                return {
+                    "surface": False,
+                    "tiktok_unverified": True,
+                    "score": 0.0,
+                    "tiktok_stats": None,
+                    "tiktok_status": None,
+                }
+
             stats = result["tiktok_stats"]
             tier_to_status = {"fresh": "low", "moderate": "moderate", "saturated": "saturated"}
             return {

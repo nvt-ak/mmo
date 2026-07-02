@@ -221,8 +221,14 @@ export interface DiscoveryJobResponse {
   job_type: string;
   keyword_type_filter: string;
   sources_scanned: number;
+  videos_scanned: number;
+  candidates_checked: number;
   keywords_generated: number;
   max_keywords?: number;
+  max_videos?: number;
+  progress_percent: number;
+  progress_phase: string;
+  progress_label: string;
   error_message?: string;
   created_at: string;
   started_at?: string;

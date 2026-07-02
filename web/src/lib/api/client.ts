@@ -46,6 +46,24 @@ class ApiError extends Error {
   }
 }
 
+function formatApiErrorBody(body: unknown, status: number): string {
+  if (!body || typeof body !== "object") {
+    return `Request failed (${status})`;
+  }
+  const record = body as {
+    error?: { message?: string };
+    detail?: string | Array<{ message?: string; msg?: string }>;
+  };
+  if (record.error?.message) return record.error.message;
+  if (typeof record.detail === "string") return record.detail;
+  if (Array.isArray(record.detail)) {
+    return record.detail
+      .map((item) => item.message ?? item.msg ?? "Invalid request")
+      .join("; ");
+  }
+  return `Request failed (${status})`;
+}
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -57,11 +75,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    const message =
-      body?.error?.message ??
-      body?.detail ??
-      `Request failed (${res.status})`;
-    throw new ApiError(message, res.status);
+    throw new ApiError(formatApiErrorBody(body, res.status), res.status);
   }
 
   if (res.status === 204) {

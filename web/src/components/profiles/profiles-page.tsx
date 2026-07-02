@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/lib/api/client";
 import type { ProfileStage } from "@/lib/api/types";
@@ -11,10 +12,15 @@ interface ProfilesPageProps {
   stage: ProfileStage;
 }
 
+function mutationError(error: unknown): string {
+  return error instanceof Error ? error.message : "Request failed";
+}
+
 export function ProfilesPage({ stage }: ProfilesPageProps) {
   const queryClient = useQueryClient();
   const [label, setLabel] = useState("");
   const [handle, setHandle] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
 
   const queryKey = ["profiles", stage];
 
@@ -23,7 +29,9 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
     queryFn: () => api.listProfiles(stage),
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["profiles"] });
+  const invalidate = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["profiles"] });
+  };
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -32,26 +40,49 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
         handle: handle.trim(),
         stage,
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
+      const savedHandle = handle.trim().replace(/^@/, "");
       setLabel("");
       setHandle("");
-      invalidate();
+      setNotice(`Added @${savedHandle}`);
+      await invalidate();
     },
+    onError: () => setNotice(null),
   });
 
   const promoteMutation = useMutation({
     mutationFn: (id: string) => api.promoteProfile(id),
-    onSuccess: invalidate,
+    onSuccess: async () => {
+      setNotice("Promoted to beta — see Beta profiles in the sidebar.");
+      await invalidate();
+    },
   });
 
   const toggleEligibleMutation = useMutation({
     mutationFn: ({ id, beta_eligible }: { id: string; beta_eligible: boolean }) =>
       api.updateProfile(id, { beta_eligible }),
-    onSuccess: invalidate,
+    onSuccess: async () => {
+      setNotice(null);
+      await invalidate();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteProfile(id),
+    onSuccess: async () => {
+      setNotice("Profile removed.");
+      await invalidate();
+    },
   });
 
   const items = data?.items ?? [];
   const title = stage === "nurture" ? "Nurture profiles" : "Beta profiles";
+  const actionError =
+    (createMutation.isError && mutationError(createMutation.error)) ||
+    (promoteMutation.isError && mutationError(promoteMutation.error)) ||
+    (toggleEligibleMutation.isError && mutationError(toggleEligibleMutation.error)) ||
+    (deleteMutation.isError && mutationError(deleteMutation.error)) ||
+    null;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -59,7 +90,7 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
         title={title}
         description={
           stage === "nurture"
-            ? "TikTok accounts for trend clone posting. Tick ready for beta, then promote."
+            ? "TikTok accounts for trend clone posting. Tick Beta ready, then promote."
             : "Creator Rewards accounts — consume beta pool only."
         }
       />
@@ -92,15 +123,42 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
           </label>
           <button
             type="submit"
-            disabled={createMutation.isPending}
+            disabled={createMutation.isPending || !label.trim() || !handle.trim()}
             className="btn btn-primary"
           >
-            Add profile
+            {createMutation.isPending ? "Adding…" : "Add profile"}
           </button>
         </form>
+        {stage === "nurture" && (
+          <p className="mt-3 text-xs text-(--muted)">
+            Promote moves the account to{" "}
+            <Link href="/profiles/beta" className="underline hover:text-(--foreground)">
+              Beta profiles
+            </Link>
+            . Bulk post from pool is not wired yet (R7c).
+          </p>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto px-8 py-6">
+        {notice && !actionError && (
+          <div className="surface-card mb-4 border-(--pastel-green-bg) bg-(--pastel-green-bg) px-4 py-3 text-sm text-(--pastel-green-text)">
+            {notice}
+            {notice.includes("Beta profiles") && (
+              <>
+                {" "}
+                <Link href="/profiles/beta" className="font-medium underline">
+                  Open beta list
+                </Link>
+              </>
+            )}
+          </div>
+        )}
+        {actionError && (
+          <div className="surface-card mb-4 border-(--pastel-red-bg) bg-(--pastel-red-bg) px-4 py-3 text-sm text-(--pastel-red-text)">
+            {actionError}
+          </div>
+        )}
         {isLoading && <p className="text-sm text-(--muted)">Loading profiles</p>}
         {isError && (
           <div className="surface-card border-(--pastel-red-bg) bg-(--pastel-red-bg) px-4 py-3 text-sm text-(--pastel-red-text)">
@@ -131,6 +189,7 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
                         <input
                           type="checkbox"
                           checked={p.beta_eligible}
+                          disabled={toggleEligibleMutation.isPending}
                           onChange={(e) =>
                             toggleEligibleMutation.mutate({
                               id: p.id,
@@ -141,16 +200,35 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
                       </td>
                     )}
                     <td className="px-4 py-3.5">
-                      {stage === "nurture" && (
+                      <div className="flex flex-wrap gap-2">
+                        {stage === "nurture" && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary px-2 py-1 text-xs"
+                            disabled={!p.beta_eligible || promoteMutation.isPending}
+                            title={
+                              p.beta_eligible
+                                ? "Move to beta profiles list"
+                                : "Tick Beta ready first"
+                            }
+                            onClick={() => promoteMutation.mutate(p.id)}
+                          >
+                            Promote to beta
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn btn-secondary px-2 py-1 text-xs"
-                          disabled={!p.beta_eligible || promoteMutation.isPending}
-                          onClick={() => promoteMutation.mutate(p.id)}
+                          disabled={deleteMutation.isPending}
+                          onClick={() => {
+                            if (window.confirm(`Remove ${p.label}?`)) {
+                              deleteMutation.mutate(p.id);
+                            }
+                          }}
                         >
-                          Promote to beta
+                          Remove
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}

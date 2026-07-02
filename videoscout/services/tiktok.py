@@ -22,9 +22,13 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 SEARCH_URL = "https://www.tiktok.com/api/search/item/full/"
+TIKTOK_SEARCH_TIMEOUT_SECONDS = float(os.getenv("TIKTOK_SEARCH_TIMEOUT_SECONDS", "15"))
+ERROR_CACHE_TTL_SECONDS = 300
 
 # Cache for TikTok results (6 hours TTL)
 _tiktok_cache: Dict[str, Dict] = {}
+_error_cache: Dict[str, Dict] = {}
+_batch_session: Optional[Dict[str, Any]] = None
 
 
 def _get_ms_token() -> Optional[str]:
@@ -83,7 +87,7 @@ async def _fetch_search_videos(keyword: str, ms_token: str, *, limit: int) -> Li
         await api.create_sessions(
             ms_tokens=[ms_token],
             num_sessions=1,
-            sleep_after=3,
+            sleep_after=1,
             headless=True,
         )
 
@@ -93,7 +97,10 @@ async def _fetch_search_videos(keyword: str, ms_token: str, *, limit: int) -> Li
             "cursor": 0,
             "source": "search_video",
         }
-        response = await api.make_request(url=SEARCH_URL, params=params)
+        response = await asyncio.wait_for(
+            api.make_request(url=SEARCH_URL, params=params),
+            timeout=TIKTOK_SEARCH_TIMEOUT_SECONDS,
+        )
 
         if response is None:
             logger.warning("TikTok API returned None for keyword=%r", keyword)
@@ -105,6 +112,64 @@ async def _fetch_search_videos(keyword: str, ms_token: str, *, limit: int) -> Li
             for item in items
             if isinstance(item, dict)
         ]
+
+
+async def _ensure_batch_api(ms_token: str):
+    global _batch_session
+    if _batch_session is None:
+        raise RuntimeError("TikTok batch session not started")
+    if _batch_session.get("api") is None:
+        from TikTokApi import TikTokApi
+
+        api = TikTokApi()
+        await api.__aenter__()
+        await api.create_sessions(
+            ms_tokens=[ms_token],
+            num_sessions=1,
+            sleep_after=1,
+            headless=True,
+        )
+        _batch_session["api"] = api
+    return _batch_session["api"]
+
+
+async def _fetch_search_videos_batch(
+    keyword: str,
+    ms_token: str,
+    *,
+    limit: int,
+) -> List[Dict[str, Any]]:
+    api = await _ensure_batch_api(ms_token)
+    params = {
+        "keyword": keyword,
+        "count": min(limit, 30),
+        "cursor": 0,
+        "source": "search_video",
+    }
+    try:
+        response = await asyncio.wait_for(
+            api.make_request(url=SEARCH_URL, params=params),
+            timeout=TIKTOK_SEARCH_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as exc:
+        raise TimeoutError(
+            f"Timeout {int(TIKTOK_SEARCH_TIMEOUT_SECONDS * 1000)}ms exceeded",
+        ) from exc
+
+    if response is None:
+        logger.warning("TikTok API returned None for keyword=%r", keyword)
+        return []
+
+    items = response.get("item_list") or []
+    return [
+        _parse_search_item(item)
+        for item in items
+        if isinstance(item, dict)
+    ]
+
+
+async def _close_batch_api(api) -> None:
+    await api.__aexit__(None, None, None)
 
 
 def _empty_search_result(*, rate_limited: bool = False, error: Optional[str] = None) -> Dict:
@@ -138,6 +203,25 @@ class TikTokService:
             return self.ms_token
         return _get_ms_token()
 
+    def start_batch(self) -> None:
+        """Reuse one browser session for multiple searches in a discovery job."""
+        global _batch_session
+        self.end_batch()
+        _batch_session = {"api": None}
+
+    def end_batch(self) -> None:
+        """Close a batch browser session if open."""
+        global _batch_session
+        if _batch_session is None:
+            return
+        api = _batch_session.get("api")
+        _batch_session = None
+        if api is not None:
+            try:
+                _run_async(_close_batch_api(api))
+            except Exception as exc:
+                logger.warning("Error closing TikTok batch session: %s", exc)
+
     def search_videos(
         self,
         keyword: str,
@@ -164,6 +248,10 @@ class TikTokService:
             if expires_at > time.time():
                 return cached["data"]
 
+        error_cached = _error_cache.get(cache_key)
+        if error_cached and error_cached.get("expires_at", 0) > time.time():
+            return error_cached["data"]
+
         ms_token = self._resolve_ms_token()
         if not ms_token:
             return _empty_search_result(error="no_ms_token")
@@ -171,13 +259,23 @@ class TikTokService:
         days = {"1d": 1, "7d": 7, "30d": 30}.get(period, 7)
 
         try:
-            videos = _run_async(
-                _fetch_search_videos(keyword, ms_token, limit=limit)
-            )
+            if _batch_session is not None:
+                videos = _run_async(
+                    _fetch_search_videos_batch(keyword, ms_token, limit=limit),
+                )
+            else:
+                videos = _run_async(
+                    _fetch_search_videos(keyword, ms_token, limit=limit),
+                )
             return self._process_response({"videos": videos}, days, cache_key=cache_key)
         except Exception as exc:
-            logger.warning("Error searching TikTok for keyword=%r: %s", keyword, exc)
-            return _empty_search_result(error=str(exc))
+            logger.warning("TikTok search failed for keyword=%r: %s", keyword, exc)
+            result = _empty_search_result(error=str(exc))
+            _error_cache[cache_key] = {
+                "data": result,
+                "expires_at": time.time() + ERROR_CACHE_TTL_SECONDS,
+            }
+            return result
 
     def _process_response(self, data: Dict, days: int, *, cache_key: str) -> Dict:
         """Process API response and calculate metrics."""

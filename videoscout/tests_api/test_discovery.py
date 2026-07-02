@@ -1,4 +1,5 @@
 """Tests for trend discovery API and worker (R7a)."""
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,6 +32,87 @@ def test_discovery_run_creates_job(client, db_session):
     assert job is not None
     assert job.job_type == "trend_discovery"
     assert job.keyword_type_filter == "both"
+
+
+def test_discovery_run_rejects_when_job_active(client, db_session):
+    db_session.add(
+        DiscoveryJobModel(
+            status="running",
+            job_type="trend_discovery",
+            keyword_type_filter="nurture",
+        )
+    )
+    db_session.commit()
+
+    with patch("videoscout.api.discovery.run_trend_discovery_sync"):
+        resp = client.post(
+            "/api/v1/discovery/run",
+            json={"keyword_type_filter": "both", "region_code": "DE"},
+        )
+
+    assert resp.status_code == 409
+
+
+def test_discovery_job_stream_emits_terminal_event(client, db_session):
+    job = DiscoveryJobModel(
+        status="completed",
+        job_type="trend_discovery",
+        keyword_type_filter="both",
+        keywords_generated=3,
+        sources_scanned=1,
+        videos_scanned=10,
+        candidates_checked=12,
+        progress_phase="complete",
+    )
+    db_session.add(job)
+    db_session.commit()
+
+    with client.stream("GET", f"/api/v1/discovery/jobs/{job.id}/stream") as resp:
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        body = "".join(resp.iter_text())
+
+    assert "data:" in body
+    assert '"progress_percent":100' in body.replace(" ", "")
+    assert body.count("data:") == 1
+
+
+def test_compute_discovery_progress_running_phase():
+    from videoscout.core_engine.discovery_progress import compute_discovery_progress
+
+    job = DiscoveryJobModel(
+        status="running",
+        job_type="trend_discovery",
+        keyword_type_filter="nurture",
+        progress_phase="scan_videos",
+        videos_scanned=5,
+        candidates_checked=8,
+        keywords_generated=0,
+    )
+    progress = compute_discovery_progress(job)
+    assert progress["progress_phase"] == "scan_videos"
+    assert 20 < progress["progress_percent"] < 95
+    assert progress["progress_label"] == "Checking TikTok gates…"
+
+
+def test_compute_discovery_progress_completed():
+    from videoscout.core_engine.discovery_progress import compute_discovery_progress
+
+    job = DiscoveryJobModel(
+        status="completed",
+        job_type="trend_discovery",
+        keyword_type_filter="both",
+        keywords_generated=4,
+        progress_phase="complete",
+    )
+    progress = compute_discovery_progress(job)
+    assert progress["progress_percent"] == 100
+    assert progress["progress_phase"] == "complete"
+
+
+def test_discovery_job_stream_404_for_unknown_job(client):
+    resp = client.get(f"/api/v1/discovery/jobs/{uuid.uuid4()}/stream")
+    assert resp.status_code == 404
 
 
 def test_list_suggestions_filter_keyword_type(client, db_session):
@@ -133,6 +215,9 @@ async def test_trend_discovery_worker_upserts(db_session, mock_trending):
         assert job_row is not None
         assert job_row.status == "completed"
         assert job_row.keywords_generated >= 1
+        assert job_row.videos_scanned >= 1
+        assert job_row.candidates_checked >= 1
+        assert job_row.progress_phase == "complete"
         rows = verify.query(SuggestionModel).all()
         assert len(rows) >= 1
         assert any(r.discovery_source == "youtube_trend" for r in rows)

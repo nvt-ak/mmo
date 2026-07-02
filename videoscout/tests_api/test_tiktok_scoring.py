@@ -12,8 +12,12 @@ from videoscout.services.tiktok import TikTokService
 @pytest.fixture(autouse=True)
 def clear_tiktok_cache():
     tiktok_module._tiktok_cache.clear()
+    tiktok_module._error_cache.clear()
+    tiktok_module._batch_session = None
     yield
     tiktok_module._tiktok_cache.clear()
+    tiktok_module._error_cache.clear()
+    tiktok_module._batch_session = None
 
 
 def test_tiktok_service_computes_avg_likes_and_comments():
@@ -145,3 +149,41 @@ async def test_tiktok_service_search_via_mstoken():
     assert result["avg_views"] == pytest.approx(1500.0)
     assert result["avg_likes"] == pytest.approx(150.0)
     assert "error" not in result
+
+
+def test_tiktok_service_batch_reuses_fetcher():
+    service = TikTokService(ms_token="test-token")
+    calls = {"count": 0}
+
+    async def fake_batch(keyword, ms_token, *, limit):
+        calls["count"] += 1
+        return [{"view_count": 10, "like_count": 1, "comment_count": 0, "share_count": 0, "created_at": ""}]
+
+    with patch.object(tiktok_module, "_fetch_search_videos_batch", side_effect=fake_batch):
+        service.start_batch()
+        try:
+            first = service.search_videos("alpha keyword")
+            second = service.search_videos("beta keyword phrase")
+        finally:
+            service.end_batch()
+
+    assert calls["count"] == 2
+    assert first["total_count"] == 1
+    assert second["total_count"] == 1
+
+
+def test_tiktok_service_caches_search_errors():
+    service = TikTokService(ms_token="test-token")
+    calls = {"n": 0}
+
+    async def boom(keyword, ms_token, *, limit):
+        calls["n"] += 1
+        raise TimeoutError("timeout")
+
+    with patch.object(tiktok_module, "_fetch_search_videos", side_effect=boom):
+        first = service.search_videos("slow keyword phrase")
+        second = service.search_videos("slow keyword phrase")
+
+    assert first["error"] == "timeout"
+    assert second["error"] == "timeout"
+    assert calls["n"] == 1

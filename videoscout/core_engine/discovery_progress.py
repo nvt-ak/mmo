@@ -1,0 +1,93 @@
+"""Discovery job progress — shared worker + API computation."""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, TypedDict
+
+if TYPE_CHECKING:
+    from videoscout.db.models import DiscoveryJobModel
+
+TRENDING_VIDEO_LIMIT = 10
+MAX_KEYWORDS_PER_JOB = 10
+MAX_CANDIDATES_ESTIMATE = TRENDING_VIDEO_LIMIT * 4
+
+PHASE_LABELS = {
+    "starting": "Starting discovery…",
+    "fetch_trends": "Fetching YouTube trends…",
+    "scan_videos": "Checking TikTok gates…",
+    "score_beta": "Scoring beta keywords…",
+    "complete": "Discovery complete",
+    "failed": "Discovery failed",
+}
+
+
+class DiscoveryProgress(TypedDict):
+    progress_percent: int
+    progress_phase: str
+    progress_label: str
+
+
+def _running_percent(
+    phase: str,
+    videos: int,
+    candidates: int,
+    keywords: int,
+) -> int:
+    if phase in ("starting", "fetch_trends") and videos == 0:
+        return 5 if phase == "fetch_trends" else 2
+
+    video_pct = 10 + int(30 * min(videos, TRENDING_VIDEO_LIMIT) / TRENDING_VIDEO_LIMIT)
+    candidate_pct = int(
+        35 * min(candidates, MAX_CANDIDATES_ESTIMATE) / MAX_CANDIDATES_ESTIMATE,
+    )
+    keyword_pct = int(15 * min(keywords, MAX_KEYWORDS_PER_JOB) / MAX_KEYWORDS_PER_JOB)
+
+    if phase == "score_beta":
+        return min(75 + int(20 * keywords / MAX_KEYWORDS_PER_JOB), 95)
+
+    return min(max(video_pct + candidate_pct + keyword_pct, 5), 94)
+
+
+def _running_label(
+    phase: str,
+    videos: int,
+    candidates: int,
+    keywords: int,
+) -> str:
+    if phase == "fetch_trends":
+        return PHASE_LABELS["fetch_trends"]
+    if phase == "score_beta":
+        return PHASE_LABELS["score_beta"]
+    if keywords > 0:
+        return f"Saving keywords ({keywords}/{MAX_KEYWORDS_PER_JOB})"
+    if candidates > 0:
+        return PHASE_LABELS["scan_videos"]
+    if videos > 0:
+        return f"Scanning trends ({videos}/{TRENDING_VIDEO_LIMIT})"
+    return PHASE_LABELS.get(phase, "Discovering…")
+
+
+def compute_discovery_progress(job: DiscoveryJobModel) -> DiscoveryProgress:
+    phase = job.progress_phase or "starting"
+    videos = job.videos_scanned or 0
+    candidates = job.candidates_checked or 0
+    keywords = job.keywords_generated or 0
+
+    if job.status == "completed":
+        return {
+            "progress_percent": 100,
+            "progress_phase": "complete",
+            "progress_label": PHASE_LABELS["complete"],
+        }
+
+    if job.status == "failed":
+        return {
+            "progress_percent": _running_percent(phase, videos, candidates, keywords),
+            "progress_phase": "failed",
+            "progress_label": job.error_message or PHASE_LABELS["failed"],
+        }
+
+    return {
+        "progress_percent": _running_percent(phase, videos, candidates, keywords),
+        "progress_phase": phase,
+        "progress_label": _running_label(phase, videos, candidates, keywords),
+    }

@@ -24,11 +24,14 @@ from videoscout.core_engine.trend_discovery import (
 from videoscout.db import get_session
 from videoscout.db.models import DiscoveryJobModel, SuggestionModel
 from videoscout.services.youtube import get_youtube_service
+from videoscout.services.tiktok import get_tiktok_service
+
+from videoscout.core_engine.discovery_progress import (
+    MAX_KEYWORDS_PER_JOB,
+    TRENDING_VIDEO_LIMIT,
+)
 
 logger = logging.getLogger(__name__)
-
-TRENDING_VIDEO_LIMIT = 10
-MAX_KEYWORDS_PER_JOB = 10
 
 
 def _upsert_scored_suggestion(db: Session, scored: Dict[str, Any]) -> bool:
@@ -106,6 +109,12 @@ def _save_keyword_if_new(
     return keywords_generated
 
 
+def _commit_job_progress(db: Session, job: DiscoveryJobModel, **fields: object) -> None:
+    for key, value in fields.items():
+        setattr(job, key, value)
+    db.commit()
+
+
 async def run_trend_discovery(
     job_id: str,
     *,
@@ -126,23 +135,30 @@ async def run_trend_discovery(
 
     job.status = "running"
     job.started_at = datetime.utcnow()
+    job.progress_phase = "fetch_trends"
     db.commit()
 
     engine = SuggestionEngine(db_session=db)
     keywords_generated = 0
+    tiktok = get_tiktok_service()
+    tiktok.start_batch()
 
     try:
         trending = get_youtube_service().get_trending_videos(
             region_code=region_code,
             max_results=TRENDING_VIDEO_LIMIT,
         )
-        job.sources_scanned = 1 if trending else 0
-        db.commit()
+        _commit_job_progress(
+            db,
+            job,
+            sources_scanned=1 if trending else 0,
+            progress_phase="scan_videos",
+        )
 
         seen: set[str] = set()
         beta_queue: List[Dict[str, Any]] = []
 
-        for video in trending:
+        for video_index, video in enumerate(trending):
             if keywords_generated >= MAX_KEYWORDS_PER_JOB:
                 break
             for candidate in extract_keyword_candidates(video["title"]):
@@ -162,6 +178,8 @@ async def run_trend_discovery(
                     candidate["keyword"],
                     gate_profile,
                 )
+                job.candidates_checked = (job.candidates_checked or 0) + 1
+                db.commit()
 
                 if provisional_type == "beta":
                     if keyword_type_filter != "nurture":
@@ -181,11 +199,14 @@ async def run_trend_discovery(
                         db, job, scored, keywords_generated,
                     )
 
+            _commit_job_progress(db, job, videos_scanned=video_index + 1)
+
         if (
             beta_queue
             and keyword_type_filter != "nurture"
             and keywords_generated < MAX_KEYWORDS_PER_JOB
         ):
+            _commit_job_progress(db, job, progress_phase="score_beta")
             try:
                 beta_scored = await score_beta_candidates_batch(
                     beta_queue,
@@ -208,6 +229,7 @@ async def run_trend_discovery(
 
         job.status = "completed"
         job.keywords_generated = keywords_generated
+        job.progress_phase = "complete"
         job.completed_at = datetime.utcnow()
         db.commit()
         logger.info(
@@ -225,6 +247,7 @@ async def run_trend_discovery(
         logger.error("Discovery job %s failed: %s", job_id, exc)
         raise
     finally:
+        tiktok.end_batch()
         db.close()
 
 

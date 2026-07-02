@@ -46,6 +46,8 @@ Active stories for VideoScout. Create story packets before implementation
 | US-055 | Beta LLM keyword scoring | E09 | normal | implemented |
 | US-056 | Beta learning weight approval | E09 | normal | implemented |
 | US-057 | Batch beta scoring pipeline | E09 | normal | implemented |
+| US-058 | Discovery SSE + reload persistence | E09 | normal | implemented |
+| US-059 | Discovery progress bar | E09 | tiny | implemented |
 
 ## Roadmap Phases
 
