@@ -4,7 +4,7 @@
 **Status:** Approved (2026-07-02)  
 **Scope:** Keyword discovery model, profile lifecycle, media pools, learning loop split  
 **Amends:** `docs/superpowers/specs/2026-07-02-videoscout-workflow-design.md` (M1 discovery + distribution)  
-**Related ADR:** `docs/decisions/0011-dual-track-nurture-beta.md` (to be created at implementation)
+**Related ADR:** `docs/decisions/0011-dual-track-nurture-beta.md`
 
 ---
 
@@ -381,7 +381,96 @@ Each phase: feature intake → story packet → harness matrix → tests. No big
 
 | Doc | Action |
 | --- | --- |
-| `docs/product/workflows.md` | Add dual-track daily flow |
-| `docs/superpowers/specs/2026-07-02-videoscout-workflow-design.md` | Amendment note on M1 discovery |
-| `docs/decisions/0011-dual-track-nurture-beta.md` | New ADR |
-| `docs/ARCHITECTURE.md` | M1 discovery + profile distribution layers |
+| `docs/product/workflows.md` | Done — v0.3 dual-track daily flow |
+| `docs/superpowers/specs/2026-07-02-videoscout-workflow-design.md` | Done — §15 M1 amendment |
+| `docs/decisions/0011-dual-track-nurture-beta.md` | Done — ICE, pre-mortem, rejected alts |
+| `docs/ARCHITECTURE.md` | Done — M1 discovery + M7 profile distribution |
+
+---
+
+## Appendix A — Rejected Alternatives (brainstorm retroactive, 2026-07-02)
+
+Divergent-phase artifacts recorded after brainstorm review. Full rationale + ICE in ADR 0011.
+
+| # | Alternative | Lens | Description | Kill reason |
+| --- | --- | --- | --- | --- |
+| 1 | Keep channel-first scan | Reverse | Status quo — seed channels, extract keywords from channel videos | Fresh install → 0 keywords; contradicts ADR 0009 |
+| 2 | Single inbox + `keyword_type` badge/filter | SCAMPER/Eliminate | One `/today` with nurture/beta tabs or filters | Fast nurture review + deep beta review conflict on same surface; ICE UX risk |
+| 3 | Global mode toggle | Persona (CFO) | Settings switch: "nurture day" vs "beta day" — one pipeline active | Operator runs both tracks daily; toggle hides half the factory |
+| 4 | Discovery fix only (no profiles/pools) | Extremes/$0 | TrendDiscovery + dual gate; defer `tiktok_profiles` and typed pools to later | Highest ICE (~567) but doesn't solve nurture/beta distribution split |
+| 5 | Operator picks type at approve | Reverse | All candidates land in one inbox; operator selects nurture or beta on approve | Kills classifier risk v1; extra click per approve; can't pre-sort inboxes |
+| 6 | Profile-bound keywords | Anti-problem | Approve keyword → immediately bind to specific TikTok profile | Breaks media pool + bulk-post model; pool_type separation harder |
+| 7 | TikTok as discovery source | First-principles | Use TikTok search/trending to generate keyword candidates | Circular with TikTok gate layer; M1 diagram error, not product intent |
+| 8 | Nurture-only v1 | Extremes/constraint | Ship trend discovery + nurture track; beta stays on current beta inbox | Fastest bootstrap fix; delays Creator Rewards (beta) value |
+| 9 | Two separate apps | SCAMPER/Substitute | Nurture app + Beta app, shared DB | Duplicates cascade, download, merge, feedback infra |
+| 10 | Auto-promote profile nurture→beta | Persona (scrappy) | When nurture metrics hit threshold, auto-move profile to beta list | Operator loses control; pool assignment rules become ambiguous (out of scope v1) |
+
+**Chosen:** Dual inbox + typed pools + shared core (spec §4 decisions 1–11).
+
+**Validate before R7a lock:** 7-day manual tagging experiment — see Appendix B.
+
+---
+
+## Appendix B — Classifier Agreement Experiment (7-day)
+
+**Goal:** Validate §6.2 auto-classify heuristics before R7a ships classifier.  
+**Gate:** ≥80% operator agreement with proposed nurture/beta label.  
+**If fail:** Fall back to alternative #5 (operator picks type at approve) for R7a; defer auto-classify to R7d.
+
+### Prerequisites
+
+- TrendDiscovery prototype OR manual export of 20–40 keyword candidates/day from YouTube trending + niche topics
+- Spreadsheet or lightweight form — not production UI required
+- Operator (1 person) who runs nurture + beta accounts daily
+
+### Daily protocol (7 days)
+
+| Step | Action |
+| --- | --- |
+| 1 | Collect candidates from trend sources (same inputs R7a will use) |
+| 2 | Record: `keyword`, `phrase_length`, `trend_source`, `tiktok_video_count_7d`, `saturation_tier` |
+| 3 | **Blind tag:** operator labels `nurture` or `beta` without seeing proposed classifier output |
+| 4 | **Apply §6.2 rules:** compute proposed `keyword_type` from heuristics table |
+| 5 | Mark `agree` if blind tag = proposed; note disagreements in `reason` column |
+
+### Columns (spreadsheet)
+
+```text
+date | keyword | phrase_words | trend_source | tiktok_7d | saturation | operator_tag | proposed_tag | agree | reason
+```
+
+### Success criteria
+
+| Metric | Target |
+| --- | --- |
+| Overall agreement | ≥80% (agree / total) |
+| Beta agreement | ≥75% (beta is higher-stakes) |
+| Nurture agreement | ≥80% |
+| Sample size | ≥140 tagged rows (20/day × 7) |
+
+### Disagreement triage
+
+After day 3, cluster `reason` values:
+
+- **Length boundary** — adjust word-count cutoffs
+- **Saturation mismatch** — tune nurture "moderate OK" vs beta "prefer fresh"
+- **Source ambiguity** — YouTube trending → nurture bias? niche topic → beta bias?
+- **Operator inconsistency** — same operator re-tags conflicting → tighten tag definitions in prompt
+
+### Outcomes
+
+| Result | Action |
+| --- | --- |
+| ≥80% agreement | Ship auto-classifier in R7a; log `classification_confidence` for low-margin cases |
+| 70–79% | Ship with operator override on inbox card (one-click reclassify before approve) |
+| <70% | R7a uses operator-picks-type at approve; revisit heuristics in R7d with pattern data |
+
+### Artifacts
+
+Store results in `docs/decisions/` or story validation evidence:
+
+```text
+docs/superpowers/validation/2026-07-XX-classifier-agreement.md  (post-run summary)
+```
+
+Harness: `scripts/bin/harness-cli story update` with experiment metrics when linked to R7 story.

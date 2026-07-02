@@ -103,17 +103,29 @@ class LearningAgent:
         else:
             return "No automatic action - manual review recommended"
     
-    def analyze_success_patterns(self, days: int = 30) -> List[Dict]:
+    def analyze_success_patterns(
+        self,
+        days: int = 30,
+        *,
+        keyword_type: Optional[str] = None,
+    ) -> List[Dict]:
         """
         Analyze successful keyword reports to identify patterns.
         """
         cutoff = datetime.now() - timedelta(days=days)
         
-        reports = self.db.query(LearningEventModel).filter(
+        query = self.db.query(LearningEventModel).filter(
             LearningEventModel.type == 'report',
             LearningEventModel.outcome == 'success',
             LearningEventModel.timestamp >= cutoff
-        ).order_by(LearningEventModel.actual_views.desc()).limit(50).all()
+        )
+        if keyword_type:
+            query = query.join(
+                SuggestionModel,
+                LearningEventModel.suggestion_id == SuggestionModel.id,
+            ).filter(SuggestionModel.keyword_type == keyword_type)
+
+        reports = query.order_by(LearningEventModel.actual_views.desc()).limit(50).all()
         
         if len(reports) < 3:
             return []  # Not enough data

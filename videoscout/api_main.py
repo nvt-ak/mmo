@@ -14,6 +14,7 @@ from videoscout.db import init_db
 from videoscout.api import (
     suggestions,
     scan,
+    discovery,
     sources,
     learning,
     settings,
@@ -23,6 +24,9 @@ from videoscout.api import (
     downloads,
     batch,
     merge,
+    feedback,
+    profiles,
+    pools,
 )
 from videoscout.scheduler import init_scheduler, shutdown_scheduler
 
@@ -89,7 +93,8 @@ async def health_check():
 
 
 app.include_router(suggestions.router, prefix="/api/v1", tags=["suggestions"])
-app.include_router(scan.router, prefix="/api/v1", tags=["scan"])
+app.include_router(discovery.router, prefix="/api/v1", tags=["discovery"])
+app.include_router(scan.router, prefix="/api/v1", tags=["scan (deprecated)"])
 app.include_router(sources.router, prefix="/api/v1", tags=["sources"])
 app.include_router(learning.router, prefix="/api/v1", tags=["learning"])
 app.include_router(settings.router, prefix="/api/v1", tags=["settings"])
@@ -99,6 +104,9 @@ app.include_router(cascade.router, prefix="/api/v1", tags=["cascade"])
 app.include_router(downloads.router, prefix="/api/v1", tags=["downloads"])
 app.include_router(batch.router, prefix="/api/v1", tags=["batch"])
 app.include_router(merge.router, prefix="/api/v1", tags=["merge"])
+app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])
+app.include_router(profiles.router, prefix="/api/v1", tags=["profiles"])
+app.include_router(pools.router, prefix="/api/v1", tags=["pools"])
 
 
 if __name__ == "__main__":

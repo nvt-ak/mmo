@@ -36,6 +36,7 @@ router = APIRouter()
 @router.get("/suggestions", response_model=SuggestionListResponse)
 async def list_suggestions(
     status: Optional[str] = None,
+    keyword_type: Optional[str] = None,
     limit: int = Query(50, le=200, ge=1),
     offset: int = Query(0, ge=0),
     sort: str = Query("created_at"),
@@ -49,6 +50,14 @@ async def list_suggestions(
     
     if status:
         query = query.filter(SuggestionModel.status == status)
+
+    if keyword_type:
+        if keyword_type not in ("nurture", "beta"):
+            raise HTTPException(400, "keyword_type must be nurture or beta")
+        query = query.filter(SuggestionModel.keyword_type == keyword_type)
+        # Beta full gate: hide unverified pending from inbox
+        if keyword_type == "beta" and (status is None or status == "pending"):
+            query = query.filter(SuggestionModel.tiktok_unverified.is_(False))
     
     if search:
         query = query.filter(SuggestionModel.keyword.ilike(f"%{search}%"))
@@ -78,6 +87,11 @@ async def list_suggestions(
             final_score=item.final_score,
             component_scores=item.component_scores,
             suggested_by=item.suggested_by,
+            keyword_type=item.keyword_type or "beta",
+            discovery_source=item.discovery_source,
+            trend_signals=item.trend_signals,
+            gate_profile=item.gate_profile,
+            tiktok_unverified=bool(item.tiktok_unverified),
             tiktok_status=item.tiktok_status,
             tiktok_count_at_suggest=item.tiktok_count_at_suggest,
             tiktok_stats=item.tiktok_stats,

@@ -305,6 +305,38 @@ class YouTubeService:
             logger.error(f"Error fetching video details: {e}")
             return None
 
+    def get_trending_videos(
+        self,
+        region_code: str = "DE",
+        max_results: int = 25,
+    ) -> List[Dict]:
+        """
+        Fetch YouTube trending videos for a region.
+
+        Returns list of dicts with id, title, channel_id.
+        """
+        logger.debug("Fetching trending videos region=%s limit=%d", region_code, max_results)
+        try:
+            response = self.client.videos().list(
+                part="snippet",
+                chart="mostPopular",
+                regionCode=region_code,
+                maxResults=max_results,
+            ).execute()
+            results = []
+            for item in response.get("items", []):
+                snippet = item.get("snippet", {})
+                results.append({
+                    "id": item["id"],
+                    "title": snippet.get("title", ""),
+                    "channel_id": snippet.get("channelId", ""),
+                })
+            logger.info("Fetched %d trending videos for %s", len(results), region_code)
+            return results
+        except Exception as e:
+            logger.error("Error fetching trending videos: %s", e)
+            return []
+
     @staticmethod
     def _normalize_transcript(fetched) -> List[Dict]:
         """Convert youtube-transcript-api result to engine segment format."""

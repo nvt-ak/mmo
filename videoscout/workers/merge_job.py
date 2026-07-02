@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from videoscout.core_engine.pools import resolve_pool_type
 from videoscout import db as db_module
 from videoscout.db.models import (
     FinalVideoModel,
@@ -62,6 +63,7 @@ def run_merge_job(job_id: str, merge_service: MergeService | None = None) -> Non
 
         suggestion_id = job.suggestion_id or video_a.suggestion_id or video_b.suggestion_id
         keyword = _resolve_keyword(db, suggestion_id)
+        pool_type = resolve_pool_type(db, suggestion_id)
         duration = (video_a.duration_sec or 0) + (video_b.duration_sec or 0)
 
         final = FinalVideoModel(
@@ -71,6 +73,8 @@ def run_merge_job(job_id: str, merge_service: MergeService | None = None) -> Non
             suggestion_id=suggestion_id,
             source_video_ids=[str(video_a.id), str(video_b.id)],
             duration_sec=duration or None,
+            pool_type=pool_type,
+            pool_status="ready",
             metadata_json={
                 "source_titles": [video_a.title, video_b.title],
                 "job_type": job.job_type,

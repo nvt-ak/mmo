@@ -91,7 +91,8 @@ def sample_suggestion(db_session):
         }],
         tiktok_status="moderate",
         tiktok_count_at_suggest=15,
-        status="pending"
+        status="pending",
+        keyword_type="beta",
     )
     db_session.add(s)
     db_session.commit()

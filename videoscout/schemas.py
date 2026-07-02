@@ -41,6 +41,11 @@ class SuggestionBase(BaseModel):
 class Suggestion(SuggestionBase):
     id: str
     suggested_by: List[SuggestedByEntry]
+    keyword_type: str = 'beta'
+    discovery_source: Optional[str] = None
+    trend_signals: Optional[Dict[str, Any]] = None
+    gate_profile: Optional[str] = None
+    tiktok_unverified: bool = False
     tiktok_status: Optional[str] = None
     tiktok_count_at_suggest: Optional[int] = None
     tiktok_stats: Optional[TikTokSearchStats] = None
@@ -207,6 +212,38 @@ class ScanProgressResponse(BaseModel):
     status: str  # 'running' | 'completed' | 'failed'
     progress: Dict[str, Any]
     error: Optional[str] = None
+
+
+# Discovery (R7a)
+class DiscoveryRunRequest(BaseModel):
+    keyword_type_filter: str = 'both'  # nurture | beta | both
+    region_code: str = 'DE'
+
+
+class DiscoveryRunResponse(BaseModel):
+    job_id: str
+    status: str
+    estimated_duration_seconds: int = 60
+    max_keywords: int = 10
+
+
+class DiscoveryJobResponse(BaseModel):
+    id: str
+    status: str
+    job_type: str
+    keyword_type_filter: str
+    sources_scanned: int
+    keywords_generated: int
+    max_keywords: int = 10
+    error_message: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class DiscoveryJobListResponse(BaseModel):
+    items: List[DiscoveryJobResponse]
+    total: int
 
 
 # Channels
@@ -388,12 +425,63 @@ class FinalVideo(BaseModel):
     suggestion_id: Optional[str] = None
     source_video_ids: List[str]
     duration_sec: Optional[int] = None
+    pool_type: Optional[str] = None
+    pool_status: Optional[str] = None
     created_at: datetime
     metadata: Optional[Dict[str, Any]] = None
 
 
 class FinalVideoListResponse(BaseModel):
     items: List[FinalVideo]
+    total: int
+    limit: int
+
+
+# Profiles + typed pools (R7b)
+class TikTokProfileCreate(BaseModel):
+    label: str = Field(..., min_length=1, max_length=255)
+    handle: str = Field(..., min_length=1, max_length=255)
+    stage: str = Field(default="nurture")
+    notes: Optional[str] = None
+
+
+class TikTokProfileUpdate(BaseModel):
+    label: Optional[str] = None
+    handle: Optional[str] = None
+    beta_eligible: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class TikTokProfile(BaseModel):
+    id: str
+    label: str
+    handle: str
+    stage: str
+    beta_eligible: bool
+    promoted_at: Optional[datetime] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+class TikTokProfileListResponse(BaseModel):
+    items: List[TikTokProfile]
+    total: int
+
+
+class PoolMediaItem(BaseModel):
+    id: str
+    kind: str  # video_asset | final_video
+    pool_type: str
+    pool_status: str
+    title: str
+    keyword: Optional[str] = None
+    file_path: str
+    duration_sec: Optional[int] = None
+    created_at: datetime
+
+
+class PoolListResponse(BaseModel):
+    items: List[PoolMediaItem]
     total: int
     limit: int
 
@@ -436,6 +524,33 @@ class LearningCycleResponse(BaseModel):
     report_id: str
     adjustments_made: int
     new_keywords_generated: int
+    proposals_created: int = 0
+
+
+class WeightProposal(BaseModel):
+    id: str
+    factor: str
+    old_value: float
+    new_value: float
+    reason: Optional[str] = None
+    confidence: float
+    status: str
+    keyword_type: str = "beta"
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class WeightProposalListResponse(BaseModel):
+    items: List[WeightProposal]
+    total: int
+
+
+class WeightProposalActionResponse(BaseModel):
+    message: str
+    proposal: WeightProposal
 
 
 # Settings
@@ -456,7 +571,24 @@ class NicheDefinition(BaseModel):
 class LLMConfig(BaseModel):
     model: str = 'gpt-4o'
     temperature: float = 0.7
+    base_url: str = 'http://localhost:20128/v1'
     api_key_set: bool = False
+
+
+class UpdateLLMConfig(BaseModel):
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class LLMModelsRequest(BaseModel):
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class LLMModelsResponse(BaseModel):
+    models: List[str]
 
 
 class TikTokConfig(BaseModel):
@@ -476,7 +608,7 @@ class UpdateSettingsRequest(BaseModel):
     weights: Optional[ScoringWeights] = None
     filters: Optional[Dict[str, Any]] = None
     niche: Optional[NicheDefinition] = None
-    llm: Optional[LLMConfig] = None
+    llm: Optional[UpdateLLMConfig] = None
     tiktok: Optional[TikTokConfig] = None
 
 

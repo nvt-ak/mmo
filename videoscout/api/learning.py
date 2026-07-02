@@ -1,18 +1,101 @@
 """Learning API endpoints - Full implementation with pattern analysis."""
-from fastapi import APIRouter, Depends, HTTPException
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List
 
 from videoscout.db import get_db
-from videoscout.db.models import SuggestionModel, LearningEventModel
+from videoscout.db.models import SuggestionModel, LearningEventModel, LearningReportModel, SettingsModel
 from videoscout.core_engine.learning import LearningAgent
+from videoscout.core_engine.weight_proposals import (
+    approve_weight_proposal,
+    list_weight_proposals,
+    propose_beta_weight_adjustments,
+    reject_weight_proposal,
+)
 from videoscout.schemas import (
     LearningInsightsResponse, LearningCycleResponse,
-    RejectionPattern, SuccessPattern, WeightAdjustment, FilterUpdate
+    RejectionPattern, SuccessPattern, WeightAdjustment, FilterUpdate,
+    WeightProposal, WeightProposalListResponse, WeightProposalActionResponse,
 )
 
 router = APIRouter()
+
+
+def _serialize_proposal(row) -> WeightProposal:
+    return WeightProposal(
+        id=str(row.id),
+        factor=row.factor,
+        old_value=row.old_value,
+        new_value=row.new_value,
+        reason=row.reason,
+        confidence=row.confidence,
+        status=row.status,
+        keyword_type=row.keyword_type,
+        created_at=row.created_at,
+        resolved_at=row.resolved_at,
+    )
+
+
+@router.get("/learning/weight-proposals", response_model=WeightProposalListResponse)
+async def get_weight_proposals(
+    status: str = Query(default="pending"),
+    db: Session = Depends(get_db),
+):
+    """List pending or historical beta weight proposals."""
+    rows = list_weight_proposals(db, status=status)
+    items = [_serialize_proposal(row) for row in rows]
+    return WeightProposalListResponse(items=items, total=len(items))
+
+
+@router.post("/learning/weight-proposals/{proposal_id}/approve", response_model=WeightProposalActionResponse)
+async def approve_weight_proposal_endpoint(
+    proposal_id: str,
+    db: Session = Depends(get_db),
+):
+    """Apply an approved beta weight change to settings."""
+    try:
+        proposal_uuid = UUID(proposal_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_proposal_id") from exc
+
+    try:
+        proposal = approve_weight_proposal(db, proposal_uuid)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="proposal_not_found")
+    except ValueError:
+        raise HTTPException(status_code=409, detail="proposal_not_pending")
+
+    return WeightProposalActionResponse(
+        message="Weight proposal approved",
+        proposal=_serialize_proposal(proposal),
+    )
+
+
+@router.post("/learning/weight-proposals/{proposal_id}/reject", response_model=WeightProposalActionResponse)
+async def reject_weight_proposal_endpoint(
+    proposal_id: str,
+    db: Session = Depends(get_db),
+):
+    """Reject a pending beta weight proposal."""
+    try:
+        proposal_uuid = UUID(proposal_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_proposal_id") from exc
+
+    try:
+        proposal = reject_weight_proposal(db, proposal_uuid)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="proposal_not_found")
+    except ValueError:
+        raise HTTPException(status_code=409, detail="proposal_not_pending")
+
+    return WeightProposalActionResponse(
+        message="Weight proposal rejected",
+        proposal=_serialize_proposal(proposal),
+    )
 
 
 @router.get("/learning/insights", response_model=LearningInsightsResponse)
@@ -34,31 +117,21 @@ async def get_learning_insights(
     rejection_patterns = agent.analyze_rejection_patterns(days=30)
     
     # Analyze successes (last 30 days)
-    success_patterns = agent.analyze_success_patterns(days=30)
+    success_patterns = agent.analyze_success_patterns(days=30, keyword_type="beta")
     
-    # Get recent learning events for weight adjustments
-    cutoff = datetime.now() - timedelta(days=7)
-    recent_events = db.query(LearningEventModel).filter(
-        LearningEventModel.timestamp >= cutoff,
-        LearningEventModel.type == 'report'
-    ).order_by(LearningEventModel.timestamp.desc()).limit(10).all()
+    # Pending beta weight proposals (not yet applied)
+    pending = list_weight_proposals(db, status="pending")
+    weight_adjustments = [
+        WeightAdjustment(
+            factor=row.factor,
+            old_value=row.old_value,
+            new_value=row.new_value,
+            reason=row.reason or "Pending operator approval",
+            confidence=row.confidence,
+        )
+        for row in pending
+    ]
     
-    # Calculate weight adjustments from reports
-    weight_adjustments = []
-    if len(recent_events) >= 3:
-        # Placeholder: in production, this would call calibrate_weights
-        weight_adjustments = [
-            WeightAdjustment(
-                factor="relevance",
-                old_value=0.30,
-                new_value=0.30,
-                reason="Stable performance",
-                confidence=0.8
-            )
-        ]
-    
-    # Get settings for filter updates
-    from videoscout.db.models import SettingsModel
     settings = db.query(SettingsModel).first()
     
     filter_updates = []
@@ -119,13 +192,13 @@ async def trigger_learning_cycle(
     """
     Manually trigger weekly learning cycle.
     
-    Runs pattern analysis, updates weights, and generates new keywords.
+    Runs pattern analysis, creates pending weight proposals, and generates new keywords.
     """
     agent = LearningAgent(db)
     
     # Analyze patterns
     rejection_patterns = agent.analyze_rejection_patterns(days=30)
-    success_patterns = agent.analyze_success_patterns(days=30)
+    success_patterns = agent.analyze_success_patterns(days=30, keyword_type="beta")
     
     # Generate similar keywords from success patterns
     new_keywords = []
@@ -148,63 +221,45 @@ async def trigger_learning_cycle(
         except Exception as e:
             print(f"Error generating keywords from {pattern['keyword_example']}: {e}")
     
-    # Calculate weight adjustments from recent reports
-    cutoff = datetime.now() - timedelta(days=7)
-    recent_reports = db.query(LearningEventModel).filter(
-        LearningEventModel.type == 'report',
-        LearningEventModel.timestamp >= cutoff
-    ).all()
-    
-    if len(recent_reports) >= 5:
-        # Run weight calibration
-        for report in recent_reports[:3]:
-            try:
-                report_data = {
-                    'predicted_score': report.predicted_score or 0.5,
-                    'actual_engagement_rate': report.actual_engagement_rate or 0.5
-                }
-                adjustments = agent.calibrate_weights(report_data)
-                weight_adjustments.extend(adjustments)
-            except Exception as e:
-                print(f"Error calibrating weights: {e}")
-    
-    # Update settings with new weights if adjustments were made
-    from videoscout.db.models import SettingsModel
-    if weight_adjustments:
-        settings = db.query(SettingsModel).first()
-        if settings:
-            # Apply weight adjustments (simplified)
-            for adj in weight_adjustments[:2]:  # Apply top 2 adjustments
-                factor = adj['factor']
-                new_value = adj['new_value']
-                if factor == 'relevance':
-                    settings.weight_relevance = new_value
-                elif factor == 'specificity':
-                    settings.weight_specificity = new_value
-            db.commit()
-    
-    # Save learning report
-    from videoscout.db.models import LearningReportModel
+    # Save learning report first (proposals may link to it)
     report = LearningReportModel(
         timestamp=datetime.utcnow(),
         rejection_patterns=rejection_patterns,
         success_patterns=success_patterns,
-        weight_adjustments=[
-            {"factor": a['factor'], "old_value": a['old_value'], "new_value": a['new_value']}
-            for a in weight_adjustments
-        ],
+        weight_adjustments=[],
         filter_updates=[],
         new_keywords_generated=len(new_keywords),
         total_rejections=len(rejection_patterns),
         total_reports=len(success_patterns),
-        avg_prediction_error=0.0  # Will be calculated later
+        avg_prediction_error=0.0,
     )
     db.add(report)
+    db.flush()
+
+    proposals_created = propose_beta_weight_adjustments(
+        db,
+        agent,
+        learning_report_id=report.id,
+    )
+
+    pending = list_weight_proposals(db, status="pending")
+    weight_adjustments = [
+        {
+            "factor": row.factor,
+            "old_value": row.old_value,
+            "new_value": row.new_value,
+            "reason": row.reason,
+            "confidence": row.confidence,
+        }
+        for row in pending
+    ]
+    report.weight_adjustments = weight_adjustments
     db.commit()
     
     return LearningCycleResponse(
         message="Learning cycle complete",
         report_id=str(report.id),
-        adjustments_made=len(weight_adjustments),
-        new_keywords_generated=len(new_keywords)
+        adjustments_made=proposals_created,
+        new_keywords_generated=len(new_keywords),
+        proposals_created=proposals_created,
     )

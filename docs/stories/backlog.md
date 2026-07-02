@@ -17,7 +17,8 @@ Active stories for VideoScout. Create story packets before implementation
 | E05 Channel Cascade | M2 — discover + subscribe on keyword approve | implemented (R2 partial) |
 | E06 Ingestion | M3 — download + channel watcher | implemented (R3) |
 | E07 Batch & Merge | M3b + M4 — review UI + ffmpeg merge | implemented (R4–R5) |
-| E08 Feedback | M5 — TikTok performance reports on web | planned (R6) |
+| E08 Feedback | M5 — TikTok performance reports on web | implemented (R6) |
+| E09 Dual-Track Discovery | M1 R7 — trend discovery, nurture/beta split | **R7c done** |
 
 ## Story Index
 
@@ -37,7 +38,14 @@ Active stories for VideoScout. Create story packets before implementation
 | US-031 | Channel new-video watcher | E06 | normal | implemented |
 | US-040 | Daily batch review UI (`/batch`) | E07 | normal | implemented |
 | US-041 | Merge engine + `/merge` UI | E07 | normal | implemented |
-| US-050 | TikTok performance report form | E08 | normal | planned |
+| US-050 | TikTok performance report form | E08 | normal | implemented |
+| US-051 | Dual-track trend discovery foundation | E09 | normal | implemented |
+| US-052 | TikTok profiles + typed media pools | E09 | normal | implemented |
+| US-053 | TikTok msToken search for web API | E09 | normal | implemented |
+| US-054 | Keyword context builder (beta KG v1) | E09 | normal | implemented |
+| US-055 | Beta LLM keyword scoring | E09 | normal | implemented |
+| US-056 | Beta learning weight approval | E09 | normal | implemented |
+| US-057 | Batch beta scoring pipeline | E09 | normal | implemented |
 
 ## Roadmap Phases
 
@@ -50,9 +58,15 @@ Active stories for VideoScout. Create story packets before implementation
 | R4 | M3b batch | US-040 |
 | R5 | M4 merge | US-041 |
 | R6 | M5 feedback | US-050 |
-| R7 | v2 upload | TBD |
+| R7a | M1 dual-track foundation | US-051 |
+| R7b | Profiles + typed pools | US-052 |
+| R7b+ | TikTok gate (msToken) | US-053 |
+| R7c | Beta LLM scoring + learning approval | US-054, US-055, US-056, US-057 |
+| R7d | Trend sources expansion | TBD |
+| R8 | v2 upload | TBD |
 
 ## Notes
 
 - US-005 (evaluate_keyword LLM) folded into US-011
 - US-004 deferred until R5 (full workflow E2E)
+- US-054–056: beta scoring pipeline per ADR 0012; nurture stays heuristic

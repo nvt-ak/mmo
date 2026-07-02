@@ -21,9 +21,7 @@ def init_db(database_url: str):
     )
     
     _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
-    
-    # Create tables
-    Base.metadata.create_all(bind=_engine)
+    # Schema via Alembic only — create_all races migrations (e.g. discovery_jobs before 0009).
 
 
 def get_db() -> Session:

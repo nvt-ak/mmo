@@ -8,10 +8,16 @@ export interface ComponentScores {
   video_performance: number;
 }
 
+export type KeywordType = "nurture" | "beta";
+
 export interface Suggestion {
   id: string;
   keyword: string;
   status: SuggestionStatus;
+  keyword_type?: KeywordType;
+  discovery_source?: string;
+  gate_profile?: string;
+  tiktok_unverified?: boolean;
   final_score: number;
   component_scores: ComponentScores;
   suggested_by: Array<{
@@ -73,8 +79,34 @@ export interface SettingsResponse {
     preferred_language: string;
     target_audience?: string;
   };
-  llm: { model: string; temperature: number; api_key_set: boolean };
+  llm: { model: string; temperature: number; base_url: string; api_key_set: boolean };
   tiktok: { api_key_set: boolean; check_enabled: boolean };
+}
+
+export interface UpdateSettingsPayload {
+  weights?: ScoringWeights;
+  filters?: Record<string, number>;
+  niche?: {
+    topics?: string[];
+    preferred_language?: string;
+    target_audience?: string;
+  };
+  llm?: {
+    model?: string;
+    temperature?: number;
+    base_url?: string;
+    api_key?: string;
+  };
+  tiktok?: { check_enabled?: boolean };
+}
+
+export interface LLMModelsResponse {
+  models: string[];
+}
+
+export interface LLMModelsRequest {
+  base_url?: string;
+  api_key?: string;
 }
 
 export interface LearningInsightsResponse {
@@ -98,6 +130,7 @@ export interface PerformanceReport {
   id: string;
   keyword: string;
   suggestion_id?: string;
+  final_video_id?: string;
   actual_views: number;
   actual_likes?: number;
   actual_comments?: number;
@@ -119,6 +152,81 @@ export interface PerformanceReportPayload {
   outcome?: string;
   notes?: string;
   suggestion_id?: string;
+  final_video_id?: string;
+}
+
+export interface WeightProposal {
+  id: string;
+  factor: string;
+  old_value: number;
+  new_value: number;
+  reason?: string;
+  confidence: number;
+  status: string;
+  keyword_type: string;
+  created_at: string;
+  resolved_at?: string;
+}
+
+export interface WeightProposalListResponse {
+  items: WeightProposal[];
+  total: number;
+}
+
+export interface FeedbackAccuracy {
+  total_reports: number;
+  linked_suggestions: number;
+  success_rate: number;
+  avg_views: number;
+  high_score_success_rate: number;
+  pending_finals: number;
+}
+
+export interface PendingFinalsResponse {
+  items: FinalVideo[];
+  total: number;
+}
+
+export interface ScanRunResponse {
+  job_id: string;
+  status: string;
+  estimated_duration_seconds?: number;
+}
+
+export interface ScanProgress {
+  channels_processed?: number;
+  videos_processed?: number;
+  suggestions_generated?: number;
+}
+
+export interface ScanProgressResponse {
+  job_id: string;
+  status: string;
+  progress: ScanProgress;
+  error?: string;
+}
+
+export type KeywordTypeFilter = "nurture" | "beta" | "both";
+
+export interface DiscoveryRunResponse {
+  job_id: string;
+  status: string;
+  estimated_duration_seconds?: number;
+  max_keywords?: number;
+}
+
+export interface DiscoveryJobResponse {
+  id: string;
+  status: string;
+  job_type: string;
+  keyword_type_filter: string;
+  sources_scanned: number;
+  keywords_generated: number;
+  max_keywords?: number;
+  error_message?: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
 }
 
 export interface Experiment {
@@ -227,6 +335,42 @@ export interface FinalVideo {
 
 export interface FinalVideoListResponse {
   items: FinalVideo[];
+  total: number;
+  limit: number;
+}
+
+export type ProfileStage = "nurture" | "beta";
+
+export interface TikTokProfile {
+  id: string;
+  label: string;
+  handle: string;
+  stage: ProfileStage;
+  beta_eligible: boolean;
+  promoted_at?: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface TikTokProfileListResponse {
+  items: TikTokProfile[];
+  total: number;
+}
+
+export interface PoolMediaItem {
+  id: string;
+  kind: "video_asset" | "final_video";
+  pool_type: ProfileStage;
+  pool_status: string;
+  title: string;
+  keyword?: string;
+  file_path: string;
+  duration_sec?: number;
+  created_at: string;
+}
+
+export interface PoolListResponse {
+  items: PoolMediaItem[];
   total: number;
   limit: number;
 }

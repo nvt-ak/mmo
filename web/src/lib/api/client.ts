@@ -1,6 +1,7 @@
 import type {
   BatchListResponse,
   FinalVideoListResponse,
+  FeedbackAccuracy,
   MergeEnqueueResponse,
   MergeJob,
   MergePoolResponse,
@@ -8,10 +9,26 @@ import type {
   ChannelListResponse,
   ExperimentListResponse,
   LearningInsightsResponse,
+  PoolListResponse,
+  PendingFinalsResponse,
+  ProfileStage,
+  TikTokProfile,
+  TikTokProfileListResponse,
   PerformanceReport,
   PerformanceReportPayload,
   RejectReason,
+  DiscoveryRunResponse,
+  DiscoveryJobResponse,
+  KeywordType,
+  KeywordTypeFilter,
+  ScanProgressResponse,
+  ScanRunResponse,
   SettingsResponse,
+  UpdateSettingsPayload,
+  LLMModelsRequest,
+  LLMModelsResponse,
+  WeightProposal,
+  WeightProposalListResponse,
   SuggestionListResponse,
   SuggestionStatus,
   VideoReviewStatus,
@@ -59,12 +76,14 @@ export const api = {
 
   listSuggestions: (params: {
     status?: SuggestionStatus;
+    keyword_type?: KeywordType;
     limit?: number;
     offset?: number;
     search?: string;
   }) => {
     const q = new URLSearchParams();
     if (params.status) q.set("status", params.status);
+    if (params.keyword_type) q.set("keyword_type", params.keyword_type);
     if (params.limit) q.set("limit", String(params.limit));
     if (params.offset) q.set("offset", String(params.offset));
     if (params.search) q.set("search", params.search);
@@ -135,16 +154,34 @@ export const api = {
     }),
 
   runScan: (force = false) =>
-    apiFetch<{ job_id: string; status: string }>("/api/v1/scan/run", {
+    apiFetch<ScanRunResponse>("/api/v1/scan/run", {
       method: "POST",
       body: JSON.stringify({ channel_ids: [], force }),
     }),
 
+  getScanStatus: (jobId: string) =>
+    apiFetch<ScanProgressResponse>(`/api/v1/scan/status/${jobId}`),
+
+  runDiscovery: (keywordTypeFilter: KeywordTypeFilter = "both") =>
+    apiFetch<DiscoveryRunResponse>("/api/v1/discovery/run", {
+      method: "POST",
+      body: JSON.stringify({ keyword_type_filter: keywordTypeFilter, region_code: "DE" }),
+    }),
+
+  getDiscoveryJob: (jobId: string) =>
+    apiFetch<DiscoveryJobResponse>(`/api/v1/discovery/jobs/${jobId}`),
+
   getSettings: () => apiFetch<SettingsResponse>("/api/v1/settings"),
 
-  updateSettings: (payload: Partial<SettingsResponse>) =>
+  updateSettings: (payload: UpdateSettingsPayload) =>
     apiFetch<{ message: string }>("/api/v1/settings", {
       method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  listLlmModels: (payload: LLMModelsRequest = {}) =>
+    apiFetch<LLMModelsResponse>("/api/v1/settings/llm/models", {
+      method: "POST",
       body: JSON.stringify(payload),
     }),
 
@@ -152,8 +189,25 @@ export const api = {
     apiFetch<LearningInsightsResponse>("/api/v1/learning/insights"),
 
   runLearningCycle: () =>
-    apiFetch<{ report_id: string; adjustments_made: number }>(
+    apiFetch<{ report_id: string; adjustments_made: number; proposals_created: number }>(
       "/api/v1/learning/cycle",
+      { method: "POST" },
+    ),
+
+  listWeightProposals: (status = "pending") =>
+    apiFetch<WeightProposalListResponse>(
+      `/api/v1/learning/weight-proposals?status=${encodeURIComponent(status)}`,
+    ),
+
+  approveWeightProposal: (proposalId: string) =>
+    apiFetch<{ message: string; proposal: WeightProposal }>(
+      `/api/v1/learning/weight-proposals/${proposalId}/approve`,
+      { method: "POST" },
+    ),
+
+  rejectWeightProposal: (proposalId: string) =>
+    apiFetch<{ message: string; proposal: WeightProposal }>(
+      `/api/v1/learning/weight-proposals/${proposalId}/reject`,
       { method: "POST" },
     ),
 
@@ -163,14 +217,21 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  listPerformanceReports: (keyword?: string) => {
+  listPerformanceReports: (params?: { keyword?: string; limit?: number }) => {
     const q = new URLSearchParams();
-    if (keyword?.trim()) q.set("keyword", keyword.trim());
+    if (params?.keyword?.trim()) q.set("keyword", params.keyword.trim());
+    if (params?.limit) q.set("limit", String(params.limit));
     const qs = q.toString();
     return apiFetch<PerformanceReport[]>(
       `/api/v1/performance/reports${qs ? `?${qs}` : ""}`,
     );
   },
+
+  getFeedbackAccuracy: () =>
+    apiFetch<FeedbackAccuracy>("/api/v1/feedback/accuracy"),
+
+  listPendingFinals: (limit = 20) =>
+    apiFetch<PendingFinalsResponse>(`/api/v1/feedback/pending-finals?limit=${limit}`),
 
   listExperiments: (status?: string) => {
     const q = new URLSearchParams();
@@ -235,6 +296,47 @@ export const api = {
 
   listFinals: (limit = 50) =>
     apiFetch<FinalVideoListResponse>(`/api/v1/finals?limit=${limit}`),
+
+  listProfiles: (stage?: ProfileStage) => {
+    const q = stage ? `?stage=${stage}` : "";
+    return apiFetch<TikTokProfileListResponse>(`/api/v1/profiles${q}`);
+  },
+
+  createProfile: (payload: {
+    label: string;
+    handle: string;
+    stage: ProfileStage;
+    notes?: string;
+  }) =>
+    apiFetch<TikTokProfile>("/api/v1/profiles", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateProfile: (
+    id: string,
+    payload: Partial<{
+      label: string;
+      handle: string;
+      beta_eligible: boolean;
+      notes: string;
+    }>,
+  ) =>
+    apiFetch<TikTokProfile>(`/api/v1/profiles/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  promoteProfile: (id: string) =>
+    apiFetch<TikTokProfile>(`/api/v1/profiles/${id}/promote`, { method: "POST" }),
+
+  deleteProfile: (id: string) =>
+    apiFetch<void>(`/api/v1/profiles/${id}`, { method: "DELETE" }),
+
+  listPoolMedia: (poolType: ProfileStage, poolStatus = "ready") =>
+    apiFetch<PoolListResponse>(
+      `/api/v1/pools?pool_type=${poolType}&pool_status=${poolStatus}`,
+    ),
 };
 
 export { ApiError };

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from videoscout.db import get_db
 from videoscout.db.models import ChannelModel, SuggestionModel, VideoAssetModel
+from videoscout.core_engine.pools import mark_pool_ready
 from videoscout.schemas import (
     BatchListResponse,
     BatchVideoAsset,
@@ -69,7 +70,7 @@ def _get_video_or_404(db: Session, video_id: str) -> VideoAssetModel:
     return row
 
 
-def _apply_review(row: VideoAssetModel, action: str) -> str:
+def _apply_review(row: VideoAssetModel, action: str, db: Session) -> str:
     if row.review_status != "pending":
         raise HTTPException(
             status_code=409,
@@ -77,6 +78,8 @@ def _apply_review(row: VideoAssetModel, action: str) -> str:
         )
     target = _REVIEW_TARGETS[action]
     row.review_status = target
+    if target == "in_pool":
+        mark_pool_ready(row, db)
     return target
 
 
@@ -136,7 +139,7 @@ async def review_video(
     db: Session = Depends(get_db),
 ):
     row = _get_video_or_404(db, video_id)
-    target = _apply_review(row, payload.action)
+    target = _apply_review(row, payload.action, db)
     db.commit()
     db.refresh(row)
     return VideoReviewResponse(id=str(row.id), review_status=target)
@@ -155,6 +158,8 @@ async def bulk_review_videos(
         if row.review_status != "pending":
             continue
         row.review_status = target
+        if target == "in_pool":
+            mark_pool_ready(row, db)
         updated += 1
 
     db.commit()

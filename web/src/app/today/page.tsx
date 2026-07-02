@@ -1,5 +1,5 @@
-import { InboxPage } from "@/components/inbox/inbox-page";
+import { redirect } from "next/navigation";
 
 export default function TodayPage() {
-  return <InboxPage />;
+  redirect("/today/nurture");
 }

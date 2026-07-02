@@ -111,11 +111,11 @@ export function MergePage() {
       )}
 
       {lastJob && (
-        <div className="border-b border-[var(--border)] bg-[var(--surface-muted)] px-8 py-3 text-sm">
-          <span className="font-mono text-xs uppercase tracking-wider text-[var(--muted)]">
+        <div className="border-b border-(--border) bg-(--surface-muted) px-8 py-3 text-sm">
+          <span className="font-mono text-xs uppercase tracking-wider text-(--muted)">
             Last job
           </span>
-          <p className="mt-1 text-[var(--foreground-strong)]">
+          <p className="mt-1 text-(--foreground-strong)">
             {lastJob.status}
             {lastJob.final_video_id ? ` · final ${lastJob.final_video_id.slice(0, 8)}` : ""}
             {lastJob.error_message ? ` · ${lastJob.error_message}` : ""}
@@ -125,12 +125,12 @@ export function MergePage() {
 
       <div className="grid flex-1 gap-8 px-8 py-6 xl:grid-cols-[1.4fr_1fr]">
         <section>
-          <h2 className="font-editorial text-xl text-[var(--foreground-strong)]">Merge pool</h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">Pick exactly two clips for manual merge.</p>
+          <h2 className="font-editorial text-xl text-(--foreground-strong)">Merge pool</h2>
+          <p className="mt-1 text-sm text-(--muted)">Pick exactly two clips for manual merge.</p>
 
-          {poolQuery.isLoading && <p className="mt-4 text-sm text-[var(--muted)]">Loading pool</p>}
+          {poolQuery.isLoading && <p className="mt-4 text-sm text-(--muted)">Loading pool</p>}
           {poolQuery.isError && (
-            <p className="mt-4 text-sm text-[var(--pastel-red-text)]">
+            <p className="mt-4 text-sm text-(--pastel-red-text)">
               {(poolQuery.error as Error).message}
             </p>
           )}
@@ -158,23 +158,23 @@ export function MergePage() {
         </section>
 
         <section>
-          <h2 className="font-editorial text-xl text-[var(--foreground-strong)]">Final videos</h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">Ready for upload handoff.</p>
+          <h2 className="font-editorial text-xl text-(--foreground-strong)">Final videos</h2>
+          <p className="mt-1 text-sm text-(--muted)">Ready for upload handoff.</p>
 
           {finals.length === 0 && (
-            <p className="mt-4 text-sm text-[var(--muted)]">No finals yet.</p>
+            <p className="mt-4 text-sm text-(--muted)">No finals yet.</p>
           )}
 
           <ul className="mt-4 space-y-3">
             {finals.map((final) => (
               <li key={final.id} className="surface-card p-4">
-                <p className="text-sm font-medium text-[var(--foreground-strong)]">
+                <p className="text-sm font-medium text-(--foreground-strong)">
                   {final.keyword ?? "Untitled merge"}
                 </p>
-                <p className="mt-1 truncate font-mono text-xs text-[var(--muted)]">
+                <p className="mt-1 truncate font-mono text-xs text-(--muted)">
                   {final.file_path}
                 </p>
-                <p className="mt-2 font-mono text-xs text-[var(--muted)]">
+                <p className="mt-2 font-mono text-xs text-(--muted)">
                   {formatDuration(final.duration_sec)} ·{" "}
                   {new Date(final.created_at).toLocaleString()}
                 </p>
@@ -203,22 +203,22 @@ function PoolCard({
       type="button"
       onClick={onToggle}
       className={`surface-card stagger-item overflow-hidden text-left ${
-        selected ? "ring-2 ring-[var(--foreground-strong)]" : ""
+        selected ? "ring-2 ring-(--foreground-strong)" : ""
       }`}
       style={{ ["--stagger-index" as string]: index }}
     >
-      <div className="relative aspect-video bg-[var(--surface-muted)]">
+      <div className="relative aspect-video bg-(--surface-muted)">
         {video.thumbnail_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={video.thumbnail_url} alt={video.title} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-[var(--muted)]">
+          <div className="flex h-full items-center justify-center text-xs text-(--muted)">
             No preview
           </div>
         )}
       </div>
       <div className="space-y-2 p-4">
-        <p className="line-clamp-2 text-sm font-medium text-[var(--foreground-strong)]">
+        <p className="line-clamp-2 text-sm font-medium text-(--foreground-strong)">
           {video.title}
         </p>
         {video.keyword && <span className="tag-pill tag-blue">{video.keyword}</span>}

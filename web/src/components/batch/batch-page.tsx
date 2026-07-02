@@ -110,7 +110,7 @@ export function BatchPage() {
       />
 
       {isFetching && !isLoading && (
-        <p className="border-b border-[var(--border)] px-8 py-2 font-mono text-xs text-[var(--muted)]">
+        <p className="border-b border-(--border) px-8 py-2 font-mono text-xs text-(--muted)">
           Syncing batch
         </p>
       )}
@@ -137,9 +137,9 @@ export function BatchPage() {
       )}
 
       <div className="flex-1 px-8 py-6">
-        {isLoading && <p className="text-sm text-[var(--muted)]">Loading videos</p>}
+        {isLoading && <p className="text-sm text-(--muted)">Loading videos</p>}
         {isError && (
-          <div className="surface-card bg-[var(--pastel-red-bg)] px-4 py-3 text-sm text-[var(--pastel-red-text)]">
+          <div className="surface-card bg-(--pastel-red-bg) px-4 py-3 text-sm text-(--pastel-red-text)">
             {(error as Error).message}
           </div>
         )}
@@ -156,7 +156,7 @@ export function BatchPage() {
         )}
 
         {items.length > 0 && status === "pending" && (
-          <label className="mb-5 flex items-center gap-2 text-sm text-[var(--muted)]">
+          <label className="mb-5 flex items-center gap-2 text-sm text-(--muted)">
             <input type="checkbox" checked={allSelected} onChange={toggleAll} />
             Select all
           </label>
@@ -206,7 +206,7 @@ function VideoCard({
       className="surface-card stagger-item overflow-hidden"
       style={{ ["--stagger-index" as string]: index }}
     >
-      <div className="relative aspect-video bg-[var(--surface-muted)]">
+      <div className="relative aspect-video bg-(--surface-muted)">
         {video.thumbnail_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -215,27 +215,27 @@ function VideoCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-[var(--muted)]">
+          <div className="flex h-full items-center justify-center text-xs text-(--muted)">
             No preview
           </div>
         )}
         {selectable && (
-          <label className="absolute left-3 top-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)]/95 p-1.5">
+          <label className="absolute left-3 top-3 rounded-(--radius-sm) border border-(--border) bg-(--surface)/95 p-1.5">
             <input type="checkbox" checked={selected} onChange={onToggle} />
           </label>
         )}
       </div>
       <div className="space-y-3 p-5">
-        <h2 className="line-clamp-2 text-sm font-medium leading-snug text-[var(--foreground-strong)]">
+        <h2 className="line-clamp-2 text-sm font-medium leading-snug text-(--foreground-strong)">
           {video.title}
         </h2>
         <div className="flex flex-wrap gap-2">
           {video.keyword && <span className="tag-pill tag-blue">{video.keyword}</span>}
-          <span className="tag-pill bg-[var(--surface-muted)] text-[var(--muted)]">
+          <span className="tag-pill bg-(--surface-muted) text-(--muted)">
             {video.channel_name ?? "Unknown channel"}
           </span>
         </div>
-        <p className="font-mono text-xs text-[var(--muted)]">
+        <p className="font-mono text-xs text-(--muted)">
           {formatViews(video.view_count)} views · {formatDuration(video.duration_sec)}
         </p>
         {selectable && (
@@ -257,7 +257,7 @@ function VideoCard({
           href={video.youtube_url}
           target="_blank"
           rel="noreferrer"
-          className="inline-block text-xs text-[var(--pastel-blue-text)] hover:underline"
+          className="inline-block text-xs text-(--pastel-blue-text) hover:underline"
         >
           Open source video
         </a>

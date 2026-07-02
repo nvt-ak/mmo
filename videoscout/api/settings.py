@@ -1,5 +1,6 @@
 """Settings API endpoints - Full implementation with DB persistence."""
-from fastapi import APIRouter, Depends
+import os
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 import logging
@@ -8,7 +9,11 @@ from videoscout.db import get_db
 from videoscout.db.models import SettingsModel
 from videoscout.schemas import (
     SettingsResponse, UpdateSettingsRequest,
-    ScoringWeights, NicheDefinition, LLMConfig, TikTokConfig
+    ScoringWeights, NicheDefinition, LLMConfig, TikTokConfig,
+    LLMModelsRequest, LLMModelsResponse,
+)
+from videoscout.core_engine.llm_config import (
+    get_llm_config, llm_api_key_configured, list_llm_models,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +35,7 @@ def _get_or_create_settings(db: Session) -> SettingsModel:
 async def get_settings(db: Session = Depends(get_db)):
     """Get current settings from database."""
     s = _get_or_create_settings(db)
+    effective_llm = get_llm_config(db)
     
     return SettingsResponse(
         weights=ScoringWeights(
@@ -53,13 +59,36 @@ async def get_settings(db: Session = Depends(get_db)):
         llm=LLMConfig(
             model=s.llm_model,
             temperature=s.llm_temperature,
-            api_key_set=bool(s.llm_api_key)
+            base_url=effective_llm["base_url"],
+            api_key_set=llm_api_key_configured(db),
         ),
         tiktok=TikTokConfig(
-            api_key_set=bool(s.tiktok_api_key),
+            api_key_set=bool(s.tiktok_api_key or os.getenv("TIKTOK_MS_TOKEN", "").strip()),
             check_enabled=s.tiktok_check_enabled
         )
     )
+
+
+@router.post("/settings/llm/models", response_model=LLMModelsResponse)
+async def fetch_llm_models(
+    payload: LLMModelsRequest,
+    db: Session = Depends(get_db),
+):
+    """List models from the configured OpenAI-compatible endpoint."""
+    try:
+        models = list_llm_models(
+            db,
+            base_url=payload.base_url,
+            api_key=payload.api_key,
+        )
+    except Exception as exc:
+        logger.warning("Failed to list LLM models: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not fetch models: {exc}",
+        ) from exc
+
+    return LLMModelsResponse(models=models)
 
 
 @router.put("/settings")
@@ -100,7 +129,10 @@ async def update_settings(
             s.llm_model = payload.llm.model
         if payload.llm.temperature is not None:
             s.llm_temperature = payload.llm.temperature
-        # Don't update api_key_set (read-only field)
+        if payload.llm.base_url is not None:
+            s.llm_base_url = payload.llm.base_url.strip() or None
+        if payload.llm.api_key:
+            s.llm_api_key = payload.llm.api_key.strip()
     
     if payload.tiktok:
         if payload.tiktok.check_enabled is not None:

@@ -17,6 +17,7 @@ from videoscout.services.tiktok import get_tiktok_service
 from videoscout.db.models import SuggestionModel
 from videoscout.db import get_session
 from videoscout.core_engine.knowledge_base import KnowledgeBase
+from videoscout.core_engine.llm_config import get_llm_config, create_llm_client
 from videoscout.schemas import ComponentScores, SuggestedByEntry
 
 
@@ -33,10 +34,11 @@ class SuggestionEngine:
         self,
         llm_client: Optional[OpenAI] = None,
         db_session = None,
-        llm_model: str = "gpt-4o"
+        llm_model: Optional[str] = None,
     ):
-        self.llm = llm_client or OpenAI()
-        self.llm_model = llm_model
+        config = get_llm_config(db_session)
+        self.llm = llm_client or create_llm_client(db_session)
+        self.llm_model = llm_model or config["model"]
         self.youtube = get_youtube_service()
         self.tiktok = get_tiktok_service()
         self.db = db_session or get_session()
@@ -257,6 +259,32 @@ Constraints:
             result = self.tiktok.search_videos(keyword, period='7d', limit=50)
             if inspect.isawaitable(result):
                 result = await result
+            if not isinstance(result, dict):
+                result = {
+                    'total_count': 0,
+                    'avg_views': 0.0,
+                    'videos': [],
+                    'avg_likes': 0.0,
+                    'avg_comments': 0.0,
+                }
+
+            if result.get('error') or result.get('rate_limited'):
+                logger.warning(
+                    "TikTok unavailable for %r: %s",
+                    keyword,
+                    result.get('error') or 'rate_limited',
+                )
+                return {
+                    'score': 0.5,
+                    'gate_unavailable': True,
+                    'tiktok_stats': {
+                        'video_count_7d': 0,
+                        'avg_views': 0.0,
+                        'avg_likes': 0.0,
+                        'avg_comments': 0.0,
+                        'saturation_tier': 'moderate',
+                    },
+                }
 
             count = result.get('total_count', 0)
 
@@ -267,7 +295,7 @@ Constraints:
                 values = [
                     float(video.get(field, 0) or 0)
                     for video in videos
-                    if video.get(field) is not None
+                    if isinstance(video, dict) and video.get(field) is not None
                 ]
                 if not values:
                     return 0.0
@@ -490,3 +518,47 @@ Constraints:
                 deduped[keyword] = kw
         
         return list(deduped.values())
+
+    async def check_tiktok_gate(self, keyword: str, gate_profile: str) -> Dict[str, Any]:
+        """
+        Apply nurture (light) or beta (full) TikTok gate.
+
+        light: surface with tiktok_unverified on failure
+        full: block from inbox on failure
+        """
+        try:
+            result = await self.calculate_saturation(keyword)
+            if result.get("gate_unavailable"):
+                raise RuntimeError("TikTok gate unavailable")
+            stats = result["tiktok_stats"]
+            tier_to_status = {"fresh": "low", "moderate": "moderate", "saturated": "saturated"}
+            return {
+                "surface": True,
+                "tiktok_unverified": False,
+                "score": result["score"],
+                "tiktok_stats": stats,
+                "tiktok_status": tier_to_status.get(stats.get("saturation_tier"), "moderate"),
+            }
+        except Exception as exc:
+            logger.warning("TikTok gate failed for %s (%s): %s", keyword, gate_profile, exc)
+            if gate_profile == "light":
+                return {
+                    "surface": True,
+                    "tiktok_unverified": True,
+                    "score": 0.5,
+                    "tiktok_stats": {
+                        "video_count_7d": 0,
+                        "avg_views": 0.0,
+                        "avg_likes": 0.0,
+                        "avg_comments": 0.0,
+                        "saturation_tier": "moderate",
+                    },
+                    "tiktok_status": "moderate",
+                }
+            return {
+                "surface": False,
+                "tiktok_unverified": True,
+                "score": 0.0,
+                "tiktok_stats": None,
+                "tiktok_status": None,
+            }

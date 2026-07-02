@@ -57,17 +57,39 @@ docs/decisions/       # ADRs
 ## Product Modules (M1–M5)
 
 Canonical workflow: `docs/product/workflows.md`. ADR: `docs/decisions/0009-keyword-led-content-factory.md`.
+Dual-track amendment (R7): ADR `docs/decisions/0011-dual-track-nurture-beta.md`.
 
 | Module | Responsibility | Phase |
 | --- | --- | --- |
-| M1 Keyword Intelligence | Agent score, inbox, learning | R1 (partial) |
-| M2 Channel Discovery | Keyword → channels → subscribe | R2 |
+| M1 Keyword Intelligence | TrendDiscovery, dual inbox, agent score, learning | R1 (partial); R7 amends discovery |
+| M2 Channel Discovery | Keyword → channels → subscribe (post-approve cascade) | R2 |
 | M3 Ingestion | Download + watcher | R3 |
 | M3b Batch Review | Keep/Skip daily UI | R4 |
 | M4 Production | Merge → `data/finals/` | R5 |
-| M5 Feedback | TikTok reports → KB | R6 |
+| M5 Feedback | TikTok reports → KB (beta-primary) | R6 |
+| M7 Profile Distribution | Typed pools → nurture/beta profile bulk post | R7b–c |
 
-**Planned additions:** `videoscout/workers/`, `services/download.py`, `services/merge.py`, tables `video_assets`, `merge_jobs`, `performance_reports`.
+### M1 Discovery (R7)
+
+```text
+TrendDiscovery (YouTube / social / web)
+  → classify keyword_type (nurture | beta)
+  → TikTokEvaluator (gate only — not discovery)
+  → dual inbox (pending)
+```
+
+Channel-first `api/scan` deprecated as primary path. TikTok is evaluation layer only.
+
+### M7 Profile Distribution (R7)
+
+```text
+approve → cascade → download → batch → typed media pool
+  → profile_media_assignments → nurture | beta TikTok profiles
+```
+
+Tables: `tiktok_profiles`, `pool_type` / `pool_status` on assets, `profile_media_assignments`.
+
+**Planned additions:** `videoscout/workers/trend_discovery.py`, `api/discovery.py`, tables above.
 
 ## Tech Stack
 

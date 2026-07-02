@@ -3,22 +3,17 @@ LLM Skills — OpenAI-compatible client for 9router local API.
 Uses http_client directly to avoid 'proxies' argument issues.
 """
 import json
-import os
 from typing import Optional
 from openai import OpenAI
 from utils.logger import get_logger
 
+from videoscout.core_engine.llm_config import get_llm_config, create_llm_client
+
 log = get_logger("llm")
 
-DEFAULT_BASE_URL = "http://localhost:20128/v1"
-
 def _get_config() -> dict:
-    """Read LLM config from environment."""
-    return {
-        "base_url": os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL),
-        "api_key": os.getenv("LLM_API_KEY", "sk-local"),
-        "model": os.getenv("LLM_MODEL", "gpt-4o-mini"),
-    }
+    """Read effective LLM config from DB overrides and environment."""
+    return get_llm_config()
 
 def _check_llm_available() -> bool:
     """Quick health check against the configured LLM endpoint."""
@@ -35,18 +30,7 @@ def _client() -> OpenAI:
     """Create OpenAI client with explicit http_client to avoid proxies issue."""
     config = _get_config()
     try:
-        import httpx
-        # Create httpx client explicitly without proxies
-        httpx_client = httpx.Client(
-            timeout=30.0,
-            headers={"User-Agent": "VideoScout/1.0"}
-        )
-
-        client = OpenAI(
-            api_key=config["api_key"],
-            base_url=config["base_url"],
-            http_client=httpx_client,
-        )
+        client = create_llm_client()
         log.debug(f"LLM client created: base_url={config['base_url']}, model={config['model']}")
         return client
     except Exception as e:

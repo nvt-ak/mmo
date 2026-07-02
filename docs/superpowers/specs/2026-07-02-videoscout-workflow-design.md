@@ -374,3 +374,46 @@ These do not block R0/R1; resolve before R2/R3 implementation.
 2. R0: update product docs + backlog + ADR
 3. Invoke **writing-plans** skill for R1 implementation plan
 4. Each phase: feature intake → story packet → harness matrix (per `AGENTS.md`)
+
+---
+
+## 15. Amendment — Dual-Track Discovery (2026-07-02)
+
+**Superseded in part by:** `docs/superpowers/specs/2026-07-02-dual-track-keyword-discovery-design.md`  
+**ADR:** `docs/decisions/0011-dual-track-nurture-beta.md`
+
+### What changes in M1
+
+| Topic | This spec (original) | Amended (R7) |
+| --- | --- | --- |
+| Discovery input | Scan YouTube channels + **TikTok search** | **TrendDiscovery** from YouTube/social/web trends — **not TikTok** |
+| Channel-first scan | Implied in M1 scan | **Deprecated as primary**; channels from post-approve cascade only |
+| TikTok role | Discovery + scoring | **Gate/evaluation only** — light (nurture) or full (beta) |
+| Inbox | Single `/today` | Dual: `/today/nurture` + `/today/beta` (`keyword_type`) |
+| Approve outcome | Triggers cascade → merge pool | Cascade → batch → **typed media pool** (`pool_type`) |
+| Distribution | Finals handoff only | **Nurture/beta profiles** bulk-post from typed pools (R7b–c) |
+| Learning | Single loop | **Beta-primary** full loop; nurture aggregate/low priority |
+
+### M1 diagram (corrected)
+
+```text
+┌─ M1 KEYWORD INTELLIGENCE (dual-track) ────────────────────────┐
+│ TrendDiscovery (YouTube / social / web — NOT TikTok search)    │
+│ Classify: nurture | beta                                         │
+│ TikTok gate: light (nurture) | full (beta)                       │
+│ Dual inbox: approve | reject keyword          [ONLY HARD GATE]   │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ approved (per keyword_type)
+                            ▼
+              … M2–M5 unchanged through batch/merge …
+                            │
+                            ▼
+┌─ M7 PROFILE DISTRIBUTION (R7b–c) ─────────────────────────────┐
+│ Typed media pool → bulk assign/post to nurture or beta profiles  │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Sections 5–6 M1 function table: treat **Scan sources** row as superseded by TrendDiscovery;
+**TikTok search** removed from discovery. All other modules (M2–M5) retain dependency order.
+
+**Validate before R7a:** 7-day classifier agreement experiment — see dual-track spec Appendix B.

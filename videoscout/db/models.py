@@ -40,6 +40,13 @@ class SuggestionModel(Base):
     tiktok_stats = Column(JSONB, nullable=True)
     tiktok_checked_at = Column(DateTime, nullable=True)
     
+    # Dual-track discovery (R7a)
+    keyword_type = Column(String(20), nullable=False, default='beta', index=True)
+    discovery_source = Column(String(50), nullable=True)
+    trend_signals = Column(JSONB, nullable=True)
+    gate_profile = Column(String(20), nullable=True)  # light | full
+    tiktok_unverified = Column(Boolean, nullable=False, default=False)
+
     # Lifecycle
     status = Column(String(50), nullable=False, default='pending', index=True)
     # 'pending' | 'approved' | 'rejected' | 'reported'
@@ -133,6 +140,39 @@ class LearningReportModel(Base):
     avg_prediction_error = Column(Float, nullable=True)
 
 
+class WeightProposalModel(Base):
+    """Pending human-approved beta scoring weight changes (US-056)."""
+
+    __tablename__ = "weight_proposals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    factor = Column(String(50), nullable=False, index=True)
+    old_value = Column(Float, nullable=False)
+    new_value = Column(Float, nullable=False)
+    reason = Column(Text, nullable=True)
+    confidence = Column(Float, nullable=False, default=0.7)
+    status = Column(String(20), nullable=False, default="pending", index=True)
+    keyword_type = Column(String(20), nullable=False, default="beta")
+    learning_report_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("learning_reports.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    resolved_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "factor IN ('relevance', 'specificity', 'saturation')",
+            name="ck_weight_proposals_factor",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected')",
+            name="ck_weight_proposals_status",
+        ),
+    )
+
+
 class ChannelModel(Base):
     """
     YouTube channels being scanned.
@@ -184,6 +224,7 @@ class SettingsModel(Base):
     # LLM config
     llm_model = Column(String(100), default='gpt-4o')  # 'gpt-4o' | 'claude-sonnet-4'
     llm_temperature = Column(Float, default=0.7)
+    llm_base_url = Column(String(500), nullable=True)
     llm_api_key = Column(String(500), nullable=True)  # Encrypted in production
     
     # TikTok config
@@ -196,6 +237,38 @@ class SettingsModel(Base):
     
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DiscoveryJobModel(Base):
+    """Trend discovery job tracking (R7a)."""
+
+    __tablename__ = 'discovery_jobs'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    status = Column(String(50), default='started', index=True)
+    job_type = Column(String(50), nullable=False, default='trend_discovery')
+    keyword_type_filter = Column(String(20), nullable=False, default='both')
+    sources_scanned = Column(Integer, default=0)
+    keywords_generated = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class TikTokProfileModel(Base):
+    """TikTok account registry for nurture/beta distribution (R7b)."""
+
+    __tablename__ = 'tiktok_profiles'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    label = Column(String(255), nullable=False)
+    handle = Column(String(255), nullable=False, unique=True, index=True)
+    stage = Column(String(20), nullable=False, default='nurture', index=True)
+    beta_eligible = Column(Boolean, nullable=False, default=False)
+    promoted_at = Column(DateTime, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class ScanJobModel(Base):
@@ -314,6 +387,12 @@ class PerformanceReportModel(Base):
         UUID(as_uuid=True),
         ForeignKey("suggestions.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    final_video_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("final_videos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     actual_views = Column(Integer, nullable=False)
@@ -435,6 +514,8 @@ class VideoAssetModel(Base):
     file_path = Column(String(1000), nullable=False)
     status = Column(String(50), nullable=False, default="downloaded", index=True)
     review_status = Column(String(50), nullable=False, default="pending", index=True)
+    pool_type = Column(String(20), nullable=False, default="beta", index=True)
+    pool_status = Column(String(30), nullable=False, default="pending_review", index=True)
     downloaded_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     metadata_json = Column("metadata", JSONB, nullable=True)
 
@@ -565,5 +646,7 @@ class FinalVideoModel(Base):
     )
     source_video_ids = Column(JSONB, nullable=False)
     duration_sec = Column(Integer, nullable=True)
+    pool_type = Column(String(20), nullable=False, default="beta", index=True)
+    pool_status = Column(String(30), nullable=False, default="pending_review", index=True)
     metadata_json = Column("metadata", JSONB, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)

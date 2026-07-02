@@ -1,0 +1,54 @@
+---
+description: Next.js web conventions — Tailwind v4, stack, validation (web/AGENTS.md, web/README.md)
+globs: web/**/*
+alwaysApply: false
+---
+
+# Web Frontend (VideoScout)
+
+Applies to all work under `web/`. Source of truth: `web/AGENTS.md`, `web/README.md`.
+
+## Next.js
+
+This is **not** the Next.js from training data. Before writing Next.js code, check deprecations and APIs in `node_modules/next/dist/docs/` for this project's version.
+
+## Tailwind v4 — CSS variables
+
+Use parenthesis syntax. **Never** `-[var(--token)]`.
+
+| Avoid | Prefer |
+|-------|--------|
+| `bg-[var(--surface-muted)]` | `bg-(--surface-muted)` |
+| `text-[var(--muted)]` | `text-(--muted)` |
+| `border-[var(--border)]` | `border-(--border)` |
+| `hover:bg-[var(--surface-muted)]` | `hover:bg-(--surface-muted)` |
+
+Opacity suffix OK: `bg-(--surface-muted)/60`. Tokens: `web/src/app/globals.css`.
+
+## Structure
+
+```
+web/src/app/          # routes (App Router)
+web/src/components/   # UI by feature
+web/src/lib/api/      # typed client + types
+```
+
+New API calls: add method in `client.ts`, types in `types.ts`.
+
+## Dev & proof
+
+- Backend must run on **8000** (`NEXT_PUBLIC_API_URL` override in `.env.local`)
+- Before claiming web work done: `npm run lint` and `npm run build` in `web/`
+- Match existing shared components: `page-header`, `tab-bar`, `action-bar`, `stat-pill`, `surface-card`, `btn` classes in `globals.css`
+
+## Pages (product map)
+
+| Route | Purpose |
+|-------|---------|
+| `/today` | Keyword inbox |
+| `/sources` | Channels + manual scan |
+| `/settings` | Scoring + scheduler |
+| `/insights` | Learning + experiments |
+| `/batch` | Video review |
+| `/merge` | Clip merge |
+| `/feedback` | TikTok feedback |

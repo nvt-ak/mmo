@@ -1,60 +1,152 @@
 """
-TikTok API service for checking keyword saturation.
-Based on videoscout/services/tiktok_service.py
+TikTok search service for keyword saturation checks.
+
+Uses TikTok's internal JSON API (/api/search/item/full/) via TikTokApi library.
+Requires ms_token from tiktok.com cookies (cookie name: msToken).
+
+Set TIKTOK_MS_TOKEN in .env or create videoscout/tiktok_ms_token.txt.
 """
+from __future__ import annotations
+
+import asyncio
+import logging
 import os
 import time
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from dotenv import load_dotenv
 
 load_dotenv()
-TIKTOK_API_KEY = os.getenv("TIKTOK_API_KEY", "")
+logger = logging.getLogger(__name__)
+
+SEARCH_URL = "https://www.tiktok.com/api/search/item/full/"
 
 # Cache for TikTok results (6 hours TTL)
 _tiktok_cache: Dict[str, Dict] = {}
 
 
+def _get_ms_token() -> Optional[str]:
+    """Read ms_token from env or tiktok_ms_token.txt file."""
+    token = os.getenv("TIKTOK_MS_TOKEN", "").strip()
+    if token:
+        return token
+    token_file = Path(__file__).parent.parent / "tiktok_ms_token.txt"
+    if token_file.exists():
+        token = token_file.read_text().strip()
+        if token:
+            return token
+    return None
+
+
+def _run_async(coro):
+    """Run async coroutine safely from a sync context."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, coro)
+                return future.result()
+        return loop.run_until_complete(coro)
+    except RuntimeError:
+        return asyncio.run(coro)
+
+
+def _parse_search_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize TikTok search item to internal video dict."""
+    stats = item.get("stats") or {}
+    create_time = item.get("createTime") or item.get("create_time")
+    created_at = ""
+    if create_time is not None:
+        try:
+            created_at = datetime.utcfromtimestamp(int(create_time)).isoformat() + "Z"
+        except (TypeError, ValueError):
+            created_at = ""
+
+    return {
+        "view_count": stats.get("playCount") or stats.get("play_count") or 0,
+        "like_count": stats.get("diggCount") or stats.get("digg_count") or 0,
+        "comment_count": stats.get("commentCount") or stats.get("comment_count") or 0,
+        "share_count": stats.get("shareCount") or stats.get("share_count") or 0,
+        "created_at": created_at,
+    }
+
+
+async def _fetch_search_videos(keyword: str, ms_token: str, *, limit: int) -> List[Dict[str, Any]]:
+    """Call TikTok internal search API and return normalized video rows."""
+    from TikTokApi import TikTokApi
+
+    async with TikTokApi() as api:
+        await api.create_sessions(
+            ms_tokens=[ms_token],
+            num_sessions=1,
+            sleep_after=3,
+            headless=True,
+        )
+
+        params = {
+            "keyword": keyword,
+            "count": min(limit, 30),
+            "cursor": 0,
+            "source": "search_video",
+        }
+        response = await api.make_request(url=SEARCH_URL, params=params)
+
+        if response is None:
+            logger.warning("TikTok API returned None for keyword=%r", keyword)
+            return []
+
+        items = response.get("item_list") or []
+        return [
+            _parse_search_item(item)
+            for item in items
+            if isinstance(item, dict)
+        ]
+
+
+def _empty_search_result(*, rate_limited: bool = False, error: Optional[str] = None) -> Dict:
+    payload = {
+        "videos": [],
+        "total_count": 0,
+        "avg_views": 0.0,
+        "avg_likes": 0.0,
+        "avg_comments": 0.0,
+        "avg_engagement_rate": 0.0,
+    }
+    if rate_limited:
+        payload["rate_limited"] = True
+    if error:
+        payload["error"] = error
+    return payload
+
+
 class TikTokService:
     """
     TikTok video search service.
-    
-    Uses TikTok API to check keyword saturation (number of videos in last 7 days).
+
+    Uses TikTok internal search API to check keyword saturation.
     """
-    
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize TikTok service with API key."""
-        self.api_key = api_key or TIKTOK_API_KEY
-        self.base_url = "https://tiktok-api.p.rapidapi.com"
-        self._client = None
-    
-    @property
-    def client(self):
-        """Lazy-load HTTP client."""
-        if self._client is None:
-            import httpx
-            self._client = httpx.Client(
-                headers={
-                    "x-rapidapi-key": self.api_key,
-                    "x-rapidapi-host": "tiktok-api.p.rapidapi.com"
-                }
-            )
-        return self._client
-    
+
+    def __init__(self, ms_token: Optional[str] = None):
+        self.ms_token = ms_token
+
+    def _resolve_ms_token(self) -> Optional[str]:
+        if self.ms_token:
+            return self.ms_token
+        return _get_ms_token()
+
     def search_videos(
         self,
         keyword: str,
         period: str = "7d",
-        limit: int = 50
+        limit: int = 50,
     ) -> Dict:
         """
         Search TikTok videos by keyword.
-        
-        Args:
-            keyword: Search term
-            period: Time period ('1d', '7d', '30d')
-            limit: Max results (max 50)
-            
+
         Returns:
             {
                 "videos": List[dict],
@@ -65,76 +157,46 @@ class TikTokService:
                 "avg_engagement_rate": float
             }
         """
-        # Check cache first
         cache_key = f"{keyword}:{period}:{limit}"
         cached = _tiktok_cache.get(cache_key)
         if cached:
             expires_at = cached.get("expires_at", 0)
             if expires_at > time.time():
                 return cached["data"]
-        
-        # Convert period to days
+
+        ms_token = self._resolve_ms_token()
+        if not ms_token:
+            return _empty_search_result(error="no_ms_token")
+
         days = {"1d": 1, "7d": 7, "30d": 30}.get(period, 7)
-        
-        # Build API request
-        # Using RapidAPI TikTok API as placeholder
-        # Replace with official TikTok Research API when available
-        
+
         try:
-            # Example: Use a generic API call structure
-            # In production, replace with actual TikTok API endpoint
-            response = self._client.get(
-                f"{self.base_url}/search/video",
-                params={
-                    "keywords": keyword,
-                    "count": limit
-                }
+            videos = _run_async(
+                _fetch_search_videos(keyword, ms_token, limit=limit)
             )
-            
-            if response.status_code == 200:
-                data = response.json()
-                return self._process_response(data, days)
-            else:
-                # Fallback for testing without API
-                return {
-                    "videos": [],
-                    "total_count": 0,
-                    "avg_views": 0.0,
-                    "avg_likes": 0.0,
-                    "avg_comments": 0.0,
-                    "avg_engagement_rate": 0.0,
-                    "rate_limited": True
-                }
-                
-        except Exception as e:
-            print(f"Error searching TikTok: {e}")
-            return {
-                "videos": [],
-                "total_count": 0,
-                "avg_views": 0.0,
-                "avg_likes": 0.0,
-                "avg_comments": 0.0,
-                "avg_engagement_rate": 0.0,
-                "error": str(e)
-            }
-    
-    def _process_response(self, data: Dict, days: int) -> Dict:
+            return self._process_response({"videos": videos}, days, cache_key=cache_key)
+        except Exception as exc:
+            logger.warning("Error searching TikTok for keyword=%r: %s", keyword, exc)
+            return _empty_search_result(error=str(exc))
+
+    def _process_response(self, data: Dict, days: int, *, cache_key: str) -> Dict:
         """Process API response and calculate metrics."""
-        videos = data.get("videos", [])
-        
+        if not isinstance(data, dict):
+            return _empty_search_result(error="invalid_response")
+
+        raw_videos = data.get("videos")
+        videos = raw_videos if isinstance(raw_videos, list) else []
+
         if not videos:
-            return {
-                "videos": [],
-                "total_count": 0,
-                "avg_views": 0.0,
-                "avg_likes": 0.0,
-                "avg_comments": 0.0,
-                "avg_engagement_rate": 0.0
+            result = _empty_search_result()
+            _tiktok_cache[cache_key] = {
+                "data": result,
+                "expires_at": time.time() + 6 * 3600,
             }
-        
-        # Filter by period
+            return result
+
         cutoff_date = datetime.now() - timedelta(days=days)
-        
+
         filtered_videos = []
         total_views = 0
         total_likes = 0
@@ -152,8 +214,10 @@ class TikTokService:
             total_likes += likes
             total_comments += comments
             total_engagement += (likes + comments + shares)
-        
+
         for video in videos:
+            if not isinstance(video, dict):
+                continue
             created_at = video.get("created_at", "")
             if created_at:
                 try:
@@ -164,7 +228,7 @@ class TikTokService:
                     _include_video_stats(video)
             else:
                 _include_video_stats(video)
-        
+
         total_count = len(filtered_videos)
         avg_views = total_views / total_count if total_count > 0 else 0
         avg_likes = total_likes / total_count if total_count > 0 else 0
@@ -173,37 +237,31 @@ class TikTokService:
             total_engagement / total_views
             if total_views > 0 else 0
         )
-        
-        # Cache result (6 hours)
-        _tiktok_cache[video.get("keyword", "")] = {
-            "data": {
-                "videos": filtered_videos,
-                "total_count": total_count,
-                "avg_views": avg_views,
-                "avg_likes": avg_likes,
-                "avg_comments": avg_comments,
-                "avg_engagement_rate": avg_engagement_rate
-            },
-            "expires_at": time.time() + 6 * 3600
-        }
-        
-        return {
+
+        result = {
             "videos": filtered_videos,
             "total_count": total_count,
             "avg_views": avg_views,
             "avg_likes": avg_likes,
             "avg_comments": avg_comments,
-            "avg_engagement_rate": avg_engagement_rate
+            "avg_engagement_rate": avg_engagement_rate,
         }
-    
+
+        _tiktok_cache[cache_key] = {
+            "data": result,
+            "expires_at": time.time() + 6 * 3600,
+        }
+
+        return result
+
     def get_keyword_saturation(
         self,
         keyword: str,
-        period: str = "7d"
+        period: str = "7d",
     ) -> Dict:
         """
         Get saturation score for a keyword.
-        
+
         Returns:
             {
                 "keyword": str,
@@ -214,27 +272,27 @@ class TikTokService:
             }
         """
         result = self.search_videos(keyword, period=period, limit=50)
-        
+        if not isinstance(result, dict):
+            result = _empty_search_result(error="invalid_result")
+
         count = result.get("total_count", 0)
-        
-        # Determine saturation level
+
         if count <= 10:
             status = "low"
         elif count <= 50:
             status = "moderate"
         else:
             status = "saturated"
-        
+
         return {
             "keyword": keyword,
             "video_count": count,
             "status": status,
             "avg_views": result.get("avg_views", 0),
-            "engagement_rate": result.get("avg_engagement_rate", 0)
+            "engagement_rate": result.get("avg_engagement_rate", 0),
         }
 
 
-# Singleton instance
 _tiktok_service: Optional[TikTokService] = None
 
 

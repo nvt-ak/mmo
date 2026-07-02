@@ -1,0 +1,56 @@
+---
+description: Harness workflow — mandatory before/after code changes (AGENTS.md, README.md)
+alwaysApply: true
+---
+
+# Harness Workflow (mandatory)
+
+Repo uses **repository-harness**. Do not skip these steps when adding or changing code.
+
+## Before any code change
+
+1. **Intake** — classify per `docs/FEATURE_INTAKE.md` (tiny / normal / high-risk)
+2. **Story** — link existing story ID **or** create packet in `docs/stories/` first
+3. **Context** — read `docs/CONTEXT_RULES.md` for current phase (intake → planning → implementation → validation)
+4. **Matrix** — run `scripts/bin/harness-cli query matrix` (Windows: `.\scripts\bin\harness-cli.exe query matrix`)
+5. **Stack / boundary changes** — ADR in `docs/decisions/` **before** implementation
+
+**No code without story ID or documented intake classification** (except explicit user override for hotfix).
+
+## Read first (by task)
+
+| Task | Read |
+|------|------|
+| Any work | `README.md`, `AGENTS.md`, `docs/HARNESS.md`, `docs/FEATURE_INTAKE.md` |
+| Product behavior | `docs/product/workflows.md` |
+| Backend | `docs/ARCHITECTURE.md`, `videoscout/README.md` |
+| Frontend | `web/README.md`, `web/AGENTS.md` |
+| Tools / optional steps | `docs/TOOL_REGISTRY.md` |
+
+Before a step that may use an external tool:
+
+```bash
+scripts/bin/harness-cli query tools --capability <name> --status present
+```
+
+Absent capability = clean skip, not failure.
+
+## After implementation
+
+- Update story status + validation evidence: `scripts/bin/harness-cli story update`
+- Architecture changes → `docs/ARCHITECTURE.md` + ADR if durable
+- Non-trivial work → `scripts/bin/harness-cli trace`
+
+## Documentation rules
+
+- **Do not** create `.md` at repo root (except `README.md`, `AGENTS.md`, `CLAUDE.md`)
+- Architecture → `docs/ARCHITECTURE.md`
+- Product → `docs/product/` or story changelog
+- Session notes → `docs/decisions/` ADR, not standalone summary files
+- Run/setup → `videoscout/README.md` or `web/README.md`
+
+## VideoScout quick map
+
+- Backend: `videoscout/` (FastAPI, PostgreSQL) — port 8000
+- Frontend: `web/` (Next.js) — port 3000
+- Product contract: `docs/product/workflows.md`

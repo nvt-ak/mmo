@@ -2,6 +2,8 @@
 
 Add project-specific agent instructions here.
 
+**Cursor always-applies:** `.cursor/rules/harness-workflow.mdc` (harness) and `.cursor/rules/web-frontend.mdc` (when editing `web/`).
+
 ## Workflow Rules (mandatory)
 
 Before **any** code change:

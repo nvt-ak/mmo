@@ -40,13 +40,13 @@ export function RejectModal({
           );
         }}
       >
-        <h2 className="font-editorial text-2xl text-[var(--foreground-strong)]">
+        <h2 className="font-editorial text-2xl text-(--foreground-strong)">
           Reject {count} keyword{count !== 1 ? "s" : ""}
         </h2>
-        <p className="mt-2 text-sm text-[var(--muted)]">
+        <p className="mt-2 text-sm text-(--muted)">
           Reason is stored for the learning agent.
         </p>
-        <label className="mt-5 block text-sm font-medium text-[var(--foreground)]">
+        <label className="mt-5 block text-sm font-medium text-(--foreground)">
           Reason
           <select
             name="reason"
@@ -60,7 +60,7 @@ export function RejectModal({
             ))}
           </select>
         </label>
-        <label className="mt-3 block text-sm font-medium text-[var(--foreground)]">
+        <label className="mt-3 block text-sm font-medium text-(--foreground)">
           Note (optional)
           <textarea
             name="note"

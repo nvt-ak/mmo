@@ -3,11 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api/client";
-import type { RejectReason, Suggestion, SuggestionStatus } from "@/lib/api/types";
+import type { RejectReason, Suggestion, SuggestionStatus, KeywordType, KeywordTypeFilter } from "@/lib/api/types";
 import { ActionBar } from "@/components/shared/action-bar";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScoreBadge } from "@/components/shared/score-badge";
+import { KeywordScanButton } from "@/components/shared/keyword-scan-button";
 import { TabBar } from "@/components/shared/tab-bar";
 import { RejectModal } from "./reject-modal";
 import { ReportDialog } from "./report-dialog";
@@ -19,7 +20,19 @@ const TABS: { status: SuggestionStatus; label: string }[] = [
   { status: "rejected", label: "Rejected" },
 ];
 
-export function InboxPage() {
+interface InboxPageProps {
+  keywordType: KeywordType;
+  title: string;
+  description: string;
+  discoveryFilter?: KeywordTypeFilter;
+}
+
+export function InboxPage({
+  keywordType,
+  title,
+  description,
+  discoveryFilter,
+}: InboxPageProps) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<SuggestionStatus>("pending");
   const [search, setSearch] = useState("");
@@ -27,11 +40,17 @@ export function InboxPage() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<Suggestion | null>(null);
 
-  const queryKey = ["suggestions", status, search];
+  const queryKey = ["suggestions", keywordType, status, search];
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey,
-    queryFn: () => api.listSuggestions({ status, limit: 100, search: search || undefined }),
+    queryFn: () =>
+      api.listSuggestions({
+        status,
+        keyword_type: keywordType,
+        limit: 100,
+        search: search || undefined,
+      }),
     refetchInterval: 30_000,
   });
 
@@ -96,8 +115,22 @@ export function InboxPage() {
   return (
     <div className="flex flex-1 flex-col">
       <PageHeader
-        title="Inbox"
-        description="Review keyword suggestions from daily channel scans."
+        title={title}
+        description={description}
+        actions={
+          <KeywordScanButton
+            keywordTypeFilter={discoveryFilter ?? keywordType}
+            label={
+              discoveryFilter === "both" || discoveryFilter === undefined
+                ? "Run trend discovery"
+                : "Discover"
+            }
+            onComplete={() => {
+              invalidate();
+              setStatus("pending");
+            }}
+          />
+        }
         toolbar={
           <input
             type="search"
@@ -120,7 +153,7 @@ export function InboxPage() {
       />
 
       {isFetching && !isLoading && (
-        <p className="border-b border-[var(--border)] px-8 py-2 font-mono text-xs text-[var(--muted)]">
+        <p className="border-b border-(--border) px-8 py-2 font-mono text-xs text-(--muted)">
           Syncing inbox
         </p>
       )}
@@ -147,10 +180,10 @@ export function InboxPage() {
 
       <div className="flex-1 overflow-auto px-8 py-6">
         {isLoading && (
-          <p className="text-sm text-[var(--muted)]">Loading suggestions</p>
+          <p className="text-sm text-(--muted)">Loading suggestions</p>
         )}
         {isError && (
-          <div className="surface-card border-[var(--pastel-red-bg)] bg-[var(--pastel-red-bg)] px-4 py-3 text-sm text-[var(--pastel-red-text)]">
+          <div className="surface-card border-(--pastel-red-bg) bg-(--pastel-red-bg) px-4 py-3 text-sm text-(--pastel-red-text)">
             {(error as Error).message}. Check API on port 8000.
           </div>
         )}
@@ -165,7 +198,7 @@ export function InboxPage() {
           <div className="surface-card overflow-hidden animate-fade-rise">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               <thead>
-                <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)] text-xs uppercase tracking-wider text-[var(--muted)]">
+                <tr className="border-b border-(--border) bg-(--surface-muted) text-xs uppercase tracking-wider text-(--muted)">
                   {status === "pending" && (
                     <th className="w-10 px-4 py-3">
                       <input
@@ -187,7 +220,7 @@ export function InboxPage() {
                 {items.map((item, index) => (
                   <tr
                     key={item.id}
-                    className="stagger-item border-b border-[var(--border-subtle)] last:border-b-0 hover:bg-[var(--surface-muted)]/60"
+                    className="stagger-item border-b border-(--border-subtle) last:border-b-0 hover:bg-(--surface-muted)/60"
                     style={{ ["--stagger-index" as string]: index }}
                   >
                     {status === "pending" && (
@@ -200,13 +233,18 @@ export function InboxPage() {
                         />
                       </td>
                     )}
-                    <td className="max-w-md px-4 py-3.5 font-medium text-[var(--foreground-strong)]">
+                    <td className="max-w-md px-4 py-3.5 font-medium text-(--foreground-strong)">
                       {item.keyword}
+                      {item.tiktok_unverified && (
+                        <span className="ml-2 rounded-(--radius-sm) bg-(--pastel-amber-bg) px-1.5 py-0.5 font-mono text-[0.65rem] uppercase text-(--pastel-amber-text)">
+                          unverified
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5">
                       <ScoreBadge score={item.final_score} />
                     </td>
-                    <td className="px-4 py-3.5 capitalize text-[var(--muted)]">
+                    <td className="px-4 py-3.5 capitalize text-(--muted)">
                       {item.tiktok_status ?? "—"}
                       {item.tiktok_count_at_suggest != null && (
                         <span className="font-mono text-xs">
@@ -215,7 +253,7 @@ export function InboxPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3.5 font-mono text-xs text-[var(--muted)]">
+                    <td className="px-4 py-3.5 font-mono text-xs text-(--muted)">
                       {new Date(item.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3.5">
@@ -223,7 +261,7 @@ export function InboxPage() {
                         <button
                           type="button"
                           onClick={() => setReportTarget(item)}
-                          className="btn btn-ghost px-2 py-1 text-[var(--pastel-green-text)]"
+                          className="btn btn-ghost px-2 py-1 text-(--pastel-green-text)"
                         >
                           Report
                         </button>
@@ -233,7 +271,7 @@ export function InboxPage() {
                           type="button"
                           onClick={() => improveMutation.mutate(item.id)}
                           disabled={improveMutation.isPending}
-                          className="btn btn-ghost px-2 py-1 text-[var(--pastel-blue-text)] disabled:opacity-50"
+                          className="btn btn-ghost px-2 py-1 text-(--pastel-blue-text) disabled:opacity-50"
                         >
                           Improve
                         </button>
@@ -246,7 +284,7 @@ export function InboxPage() {
           </div>
         )}
         {data && data.total > items.length && (
-          <p className="mt-4 font-mono text-xs text-[var(--muted)]">
+          <p className="mt-4 font-mono text-xs text-(--muted)">
             Showing {items.length} of {data.total}
           </p>
         )}
