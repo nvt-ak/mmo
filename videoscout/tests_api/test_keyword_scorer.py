@@ -7,12 +7,14 @@ import pytest
 from videoscout.core_engine.keyword_scorer import (
     BLEND_HEURISTIC_WEIGHT,
     BLEND_LLM_WEIGHT,
+    _build_batch_prompt,
     clamp_components,
     heuristic_final_score,
     score_beta_candidate,
     score_beta_candidates_batch,
     weighted_final_score,
 )
+from videoscout.core_engine.scoring_rubric import default_rubric_text
 from videoscout.db.models import PerformanceReportModel, SettingsModel, SuggestionModel
 
 
@@ -256,7 +258,7 @@ def test_weighted_final_score_recomputes_server_side():
 
 def test_clamp_components():
     assert clamp_components({"relevance": 1.4, "specificity": -0.2, "saturation": 0.5, "trend": 0.5, "video_performance": 0.5}) == {
-        "relevance": 1.0,
+        "relevance": 0.98,
         "specificity": 0.0,
         "saturation": 0.5,
         "trend": 0.5,
@@ -328,3 +330,47 @@ async def test_score_beta_candidates_batch_splits_on_timeout(db_session):
 
     assert len(scored) == 4
     assert llm.chat.completions.create.call_count == 3
+
+
+def test_beta_rubric_v2_includes_kb_and_calibration():
+    text = default_rubric_text("beta")
+    assert "kb_context" in text
+    assert "false positive" in text.lower()
+    assert "## Calibration" in text
+    assert "component_reasons" in text
+    assert "historical niche evidence" in text.lower()
+    assert "0.98" in text
+
+
+def test_beta_batch_prompt_requests_component_reasons():
+    prompt = _build_batch_prompt(
+        [{"keyword": "beta niche keyword phrase", "kb_context": {}}],
+        {"relevance": 0.30, "specificity": 0.25, "saturation": 0.25, "trend": 0.10, "video_performance": 0.10},
+    )
+    assert "component_reasons" in prompt
+    assert "kb_context" in prompt or "historical niche" in prompt.lower()
+
+
+@pytest.mark.asyncio
+async def test_score_beta_persists_llm_component_reasons(db_session):
+    keyword = "beta long tail keyword phrase"
+    reasons = {
+        "relevance": "kb_context shows 3 niche winners; no false positives.",
+        "specificity": "4-word niche phrase with technical term.",
+        "saturation": "TikTok tier=moderate with 12 videos published in the last 7 days.",
+        "trend": "Challenge hook early in source title.",
+        "video_performance": "Avg views 5,000; engagement adds 0.04.",
+    }
+    payload = _batch_llm_response([keyword])
+    payload["scores"][0]["component_reasons"] = reasons
+
+    scored = await score_beta_candidate(
+        _candidate(keyword=keyword),
+        tiktok_gate=_tiktok_gate(),
+        db=db_session,
+        llm_client=_mock_llm(payload),
+    )
+    assert scored is not None
+    agent_reasons = scored["platform_signals"]["agent"]["component_reasons"]
+    assert agent_reasons["relevance"] == reasons["relevance"]
+    assert "12 videos" in agent_reasons["saturation"]

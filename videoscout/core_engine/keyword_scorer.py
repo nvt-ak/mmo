@@ -14,7 +14,11 @@ from videoscout.core_engine.keyword_classifier import (
 )
 from videoscout.core_engine.keyword_context import KeywordContextBuilder
 from videoscout.core_engine.platform_signals import build_platform_signals
-from videoscout.core_engine.scoring_rubric import resolve_scoring_rubric
+from videoscout.core_engine.scoring_rubric import (
+    enforce_batch_relevance_tiebreak,
+    enforce_batch_spread,
+    resolve_scoring_rubric,
+)
 from videoscout.core_engine.llm_config import create_llm_client, get_llm_config
 from videoscout.db.models import PerformanceReportModel, SettingsModel, SuggestionModel
 
@@ -27,6 +31,7 @@ BLEND_HEURISTIC_WEIGHT = 0.4
 CALIBRATION_REPORT_THRESHOLD = 20
 LLM_TEMPERATURE = 0.25
 BATCH_MAX_SIZE = 10
+COMPONENT_MAX = 0.98
 
 COMPONENT_KEYS = (
     "relevance",
@@ -95,7 +100,7 @@ def clamp_components(components: Dict[str, Any]) -> Dict[str, float]:
     clamped: Dict[str, float] = {}
     for key in COMPONENT_KEYS:
         raw = float(components.get(key, 0.0))
-        clamped[key] = round(max(0.0, min(1.0, raw)), 3)
+        clamped[key] = round(max(0.0, min(COMPONENT_MAX, raw)), 3)
     return clamped
 
 
@@ -155,6 +160,13 @@ Return JSON only:
         "trend": 0.0,
         "video_performance": 0.0
       }},
+      "component_reasons": {{
+        "relevance": "short reason with evidence",
+        "specificity": "short reason",
+        "saturation": "short reason — tier and count only",
+        "trend": "short reason",
+        "video_performance": "short reason — cite avg_views"
+      }},
       "rationale": "1-2 sentences",
       "risk_flags": [],
       "confidence": 0.0
@@ -163,6 +175,9 @@ Return JSON only:
 }}
 
 Return one entry per input keyword. Do not compute final_score.
+If relevance differs by less than 0.03 within the batch, separate candidates using
+specificity, saturation, and trend — do not assign identical relevance scores.
+Historical niche evidence in kb_context should outweigh generic popularity.
 
 Batch payload:
 {json.dumps(payload, ensure_ascii=False)}
@@ -242,8 +257,9 @@ def _finalize_beta_score(
 
     tier_to_status = {"fresh": "low", "moderate": "moderate", "saturated": "saturated"}
     rationale = str(llm_payload.get("rationale") or "")
+    raw_reasons = llm_payload.get("component_reasons") or {}
     component_reasons = {
-        key: f"LLM scored {llm_components[key]:.0%} for {key.replace('_', ' ')}."
+        key: str(raw_reasons.get(key) or f"LLM scored {llm_components[key]:.0%} for {key.replace('_', ' ')}.")
         for key in COMPONENT_KEYS
     }
     trend_signals = dict(candidate.get("trend_signals") or {})
@@ -260,6 +276,7 @@ def _finalize_beta_score(
         "keyword_type": keyword_type,
         "discovery_source": discovery_source,
         "trend_signals": trend_signals,
+        "trend_evidence": candidate.get("trend_evidence"),
         "gate_profile": "full",
         "final_score": final_score,
         "component_scores": llm_components,
@@ -307,6 +324,7 @@ def _prepare_batch_items(
                 "keyword": keyword,
                 "discovery_source": candidate.get("discovery_source", "youtube_trend"),
                 "trend_signals": candidate.get("trend_signals"),
+                "trend_evidence": candidate.get("trend_evidence"),
                 "tiktok_stats": tiktok_stats,
                 "kb_context": kb_context,
             }
@@ -348,7 +366,8 @@ def _finalize_batch_scores(
         )
         if finalized:
             results.append(finalized)
-    return results
+    results = enforce_batch_relevance_tiebreak(results)
+    return enforce_batch_spread(results)
 
 
 def _score_beta_chunk(

@@ -44,6 +44,7 @@ class SuggestionModel(Base):
     keyword_type = Column(String(20), nullable=False, default='beta', index=True)
     discovery_source = Column(String(50), nullable=True)
     trend_signals = Column(JSONB, nullable=True)
+    trend_evidence = Column(JSONB, nullable=True)
     platform_signals = Column(JSONB, nullable=True)
     gate_profile = Column(String(20), nullable=True)  # light | full
     tiktok_unverified = Column(Boolean, nullable=False, default=False)

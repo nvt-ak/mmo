@@ -90,6 +90,7 @@ async def list_suggestions(
             keyword_type=item.keyword_type or "beta",
             discovery_source=item.discovery_source,
             trend_signals=item.trend_signals,
+            trend_evidence=item.trend_evidence,
             platform_signals=item.platform_signals,
             gate_profile=item.gate_profile,
             tiktok_unverified=bool(item.tiktok_unverified),

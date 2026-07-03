@@ -10,6 +10,7 @@ from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from videoscout.core_engine.keyword_classifier import classify_keyword_type
+from videoscout.core_engine.trend_evidence import velocity_percentile_from_evidence
 from videoscout.core_engine.keyword_scorer import (
     BLEND_HEURISTIC_WEIGHT,
     BLEND_LLM_WEIGHT,
@@ -246,7 +247,20 @@ def compute_video_performance(tiktok_stats: Dict[str, Any]) -> tuple[float, str]
     )
 
 
-def compute_trend_signal(keyword: str, discovery_source: str, source_title: str) -> tuple[float, str]:
+def compute_trend_signal(
+    keyword: str,
+    discovery_source: str,
+    source_title: str,
+    *,
+    trend_evidence: Optional[Dict[str, Any]] = None,
+) -> tuple[float, str]:
+    percentile = velocity_percentile_from_evidence(trend_evidence)
+    if percentile is not None:
+        score = _clip_component(float(percentile))
+        return score, (
+            f"Velocity percentile {percentile:.0%} within region/category batch."
+        )
+
     if discovery_source != "youtube_trend" or not source_title:
         return 0.5, "No strong trending-source signal."
 
@@ -410,6 +424,7 @@ def compute_nurture_components(
         keyword,
         candidate.get("discovery_source", "youtube_trend"),
         source_title,
+        trend_evidence=candidate.get("trend_evidence"),
     )
     video_performance, perf_reason = compute_video_performance(tiktok_stats)
 
@@ -495,6 +510,7 @@ def score_nurture_heuristic(
         "keyword_type": keyword_type,
         "discovery_source": discovery_source,
         "trend_signals": candidate.get("trend_signals"),
+        "trend_evidence": candidate.get("trend_evidence"),
         "gate_profile": "light",
         "final_score": final_score,
         "component_scores": components,
@@ -662,6 +678,7 @@ def _finalize_nurture_llm_row(
         "keyword_type": keyword_type,
         "discovery_source": discovery_source,
         "trend_signals": candidate.get("trend_signals"),
+        "trend_evidence": candidate.get("trend_evidence"),
         "gate_profile": "light",
         "final_score": final_score,
         "component_scores": components,

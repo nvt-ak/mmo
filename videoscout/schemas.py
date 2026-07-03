@@ -44,6 +44,7 @@ class Suggestion(SuggestionBase):
     keyword_type: str = 'beta'
     discovery_source: Optional[str] = None
     trend_signals: Optional[Dict[str, Any]] = None
+    trend_evidence: Optional[Dict[str, Any]] = None
     platform_signals: Optional[Dict[str, Any]] = None
     gate_profile: Optional[str] = None
     tiktok_unverified: bool = False

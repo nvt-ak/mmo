@@ -313,12 +313,13 @@ class YouTubeService:
         """
         Fetch YouTube trending videos for a region.
 
-        Returns list of dicts with id, title, channel_id.
+        Returns list of dicts with id, title, channel_id, published_at,
+        view_count, category_id.
         """
         logger.debug("Fetching trending videos region=%s limit=%d", region_code, max_results)
         try:
             response = self.client.videos().list(
-                part="snippet",
+                part="snippet,statistics",
                 chart="mostPopular",
                 regionCode=region_code,
                 maxResults=max_results,
@@ -326,10 +327,15 @@ class YouTubeService:
             results = []
             for item in response.get("items", []):
                 snippet = item.get("snippet", {})
+                statistics = item.get("statistics", {})
+                view_count = int(statistics.get("viewCount") or 0)
                 results.append({
                     "id": item["id"],
                     "title": snippet.get("title", ""),
                     "channel_id": snippet.get("channelId", ""),
+                    "published_at": snippet.get("publishedAt"),
+                    "view_count": view_count,
+                    "category_id": snippet.get("categoryId"),
                 })
             logger.info("Fetched %d trending videos for %s", len(results), region_code)
             return results

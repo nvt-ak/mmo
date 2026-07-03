@@ -16,6 +16,14 @@ from videoscout.core_engine.keyword_classifier import classify_keyword_type
 from videoscout.core_engine.keyword_scorer import score_beta_candidates_batch
 from videoscout.core_engine.nurture_scorer import score_nurture_candidates_batch
 from videoscout.core_engine.trend_discovery import extract_keyword_candidates
+from videoscout.core_engine.trend_evidence import (
+    SCHEMA_VERSION,
+    EvidenceBuilder,
+    attach_velocity_to_videos,
+    compute_velocity_percentiles,
+    serialize_evidence,
+    trend_signals_from_evidence,
+)
 from videoscout.db import get_session
 from videoscout.db.models import DiscoveryJobModel, SuggestionModel
 from videoscout.services.youtube import get_youtube_service
@@ -59,6 +67,7 @@ def _upsert_scored_suggestion(db: Session, scored: Dict[str, Any]) -> bool:
             existing.keyword_type = scored["keyword_type"]
             existing.discovery_source = scored["discovery_source"]
             existing.trend_signals = scored["trend_signals"]
+            existing.trend_evidence = scored.get("trend_evidence")
             existing.platform_signals = scored.get("platform_signals")
             existing.gate_profile = scored["gate_profile"]
             existing.tiktok_unverified = scored["tiktok_unverified"]
@@ -82,6 +91,7 @@ def _upsert_scored_suggestion(db: Session, scored: Dict[str, Any]) -> bool:
         keyword_type=scored["keyword_type"],
         discovery_source=scored["discovery_source"],
         trend_signals=scored["trend_signals"],
+        trend_evidence=scored.get("trend_evidence"),
         platform_signals=scored.get("platform_signals"),
         gate_profile=scored["gate_profile"],
         tiktok_unverified=scored["tiktok_unverified"],
@@ -156,6 +166,18 @@ async def run_trend_discovery(
             region_code=region_code,
             max_results=TRENDING_VIDEO_LIMIT,
         )
+        trending = attach_velocity_to_videos(trending)
+        velocity_percentiles = compute_velocity_percentiles(trending, region=region_code)
+        evidence_builder = EvidenceBuilder(
+            pipeline_run_id=str(job_uuid),
+            region=region_code,
+        )
+        logger.info(
+            "Discovery job %s trend_evidence schema=%s videos=%d",
+            job_id,
+            SCHEMA_VERSION,
+            len(trending),
+        )
         _commit_job_progress(
             db,
             job,
@@ -182,10 +204,22 @@ async def run_trend_discovery(
                     continue
                 seen.add(keyword)
 
+                trend_evidence = serialize_evidence(
+                    evidence_builder.build(
+                        keyword=candidate["keyword"],
+                        source_video=video,
+                        discovery_source=candidate.get("discovery_source", "youtube_trend"),
+                        velocity_percentile=velocity_percentiles.get(str(video.get("id") or "")),
+                    )
+                )
+                trend_signals = trend_signals_from_evidence(trend_evidence)
+
                 enriched_candidate = {
                     **candidate,
+                    "keyword": candidate["keyword"],
+                    "trend_evidence": trend_evidence,
                     "trend_signals": {
-                        **(candidate.get("trend_signals") or {}),
+                        **trend_signals,
                         "video_id": video.get("id"),
                         "channel_id": video.get("channel_id"),
                     },

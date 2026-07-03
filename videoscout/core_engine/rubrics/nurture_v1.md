@@ -68,7 +68,9 @@ Example: `"xhoni 100"` in `"DON XHONI - 100%"` → primary (2/3 title tokens).
 
 **Filler / single generic word (0.45–0.52)** — e.g. `"blind"`, `"2026"` alone.
 
-**No YouTube trend source:** 0.50
+**If no YouTube trend source exists:**
+- Assign a neutral score around **0.50–0.60** using available signals (keyword semantics, TikTok stats)
+- Do not default to 0.50 when title overlap or platform data indicates a clear hook
 
 Same score for every keyword in batch is wrong — vary by coverage and position.
 
@@ -77,19 +79,29 @@ Base from TikTok `avg_views` bands:
 - <1K → 0.30–0.45 | 1K–10K → 0.45–0.60 | 10K–100K → 0.60–0.75 |
   100K–1M → 0.75–0.90 | 1M+ → 0.90–0.96
 
-Engagement bonus (additive, clip 0.98):
-- `(avg_likes + avg_comments) / avg_views × 25`, capped at **+0.10**
+Engagement bonus (heuristic, additive, clip 0.98):
+- Use engagement rate as a **supporting signal** relative to batch peers
+- Typical bonus: **0.00–0.10** — higher engagement vs peers → larger bonus
+- Never exceed **+0.10** (do not apply a fixed formula; judge qualitatively)
 
 Cite avg_views and bonus in component_reasons.
 
 ## Confidence (0.0–1.0)
 
-Data coverage score — not quality of keyword:
-- YouTube source_title present: +0.20
-- TikTok stats verified (not unverified): +0.25
-- `video_count_7d ≥ 3`: +0.15
-- `avg_views > 0`: +0.10
-- Multiple discovery signals: +0.10
+Data coverage score — not quality of keyword.
+
+**Increase confidence when** (calibration guidance — not additive arithmetic):
+- YouTube `source_title` present → title context available
+- TikTok stats verified (not unverified) → strong platform signal
+- `video_count_7d ≥ 3` → stable saturation read
+- `avg_views > 0` → performance data available
+- Multiple discovery signals aligned → consistent evidence
+
+**Decrease confidence when:**
+- Missing supporting signals (no title, unverified TikTok, sparse stats)
+- Conflicting evidence across platform signals
+
+Treat the above as guidance, not an exact formula. **Clip confidence to 1.00.**
 
 Typical path with title + TikTok + views: **0.75–0.85**.
 

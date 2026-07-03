@@ -11,9 +11,24 @@ from videoscout.db.models import DiscoveryJobModel, SuggestionModel
 
 @pytest.fixture
 def mock_trending():
+    published = datetime.utcnow().isoformat() + "Z"
     return [
-        {"id": "v1", "title": "Small Business TikTok Marketing Tips 2026", "channel_id": "UC1"},
-        {"id": "v2", "title": "Viral Dance Trend Challenge", "channel_id": "UC2"},
+        {
+            "id": "v1",
+            "title": "Small Business TikTok Marketing Tips 2026",
+            "channel_id": "UC1",
+            "published_at": published,
+            "view_count": 150_000,
+            "category_id": "22",
+        },
+        {
+            "id": "v2",
+            "title": "Viral Dance Trend Challenge",
+            "channel_id": "UC2",
+            "published_at": published,
+            "view_count": 80_000,
+            "category_id": "22",
+        },
     ]
 
 
@@ -356,6 +371,10 @@ async def test_trend_discovery_worker_upserts(db_session, mock_trending):
         rows = verify.query(SuggestionModel).all()
         assert len(rows) >= 1
         assert any(r.discovery_source == "youtube_trend" for r in rows)
+        assert any(
+            r.trend_evidence and r.trend_evidence.get("schema_version") == "1"
+            for r in rows
+        )
     finally:
         verify.close()
 
