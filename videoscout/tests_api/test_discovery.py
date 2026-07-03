@@ -32,6 +32,10 @@ def mock_trending():
     ]
 
 
+async def _passthrough_enrich(items, **kwargs):
+    return items
+
+
 def test_discovery_run_creates_job(client, db_session):
     with patch("videoscout.api.discovery.run_trend_discovery_sync"):
         resp = client.post(
@@ -298,7 +302,8 @@ async def test_trend_discovery_worker_respects_cancelled_job(db_session, mock_tr
 
     with patch("videoscout.workers.trend_discovery.get_youtube_service", return_value=mock_yt), \
          patch("videoscout.workers.trend_discovery.get_session", return_value=db_session), \
-         patch("videoscout.workers.trend_discovery.SuggestionEngine") as mock_engine_cls:
+         patch("videoscout.workers.trend_discovery.SuggestionEngine") as mock_engine_cls, \
+         patch("videoscout.workers.trend_discovery.enrich_top_scored", side_effect=_passthrough_enrich):
         instance = mock_engine_cls.return_value
         instance.check_tiktok_gate = AsyncMock(side_effect=fake_gate)
         await run_trend_discovery(str(job_id), keyword_type_filter="both")
@@ -353,7 +358,8 @@ async def test_trend_discovery_worker_upserts(db_session, mock_trending):
     with patch("videoscout.workers.trend_discovery.get_youtube_service", return_value=mock_yt), \
          patch("videoscout.workers.trend_discovery.get_session", return_value=db_session), \
          patch("videoscout.workers.trend_discovery.SuggestionEngine") as mock_engine_cls, \
-         patch("videoscout.workers.trend_discovery.score_beta_candidates_batch", side_effect=fake_beta_batch):
+         patch("videoscout.workers.trend_discovery.score_beta_candidates_batch", side_effect=fake_beta_batch), \
+         patch("videoscout.workers.trend_discovery.enrich_top_scored", side_effect=_passthrough_enrich):
         instance = mock_engine_cls.return_value
         instance.check_tiktok_gate = AsyncMock(side_effect=fake_gate)
         await run_trend_discovery(str(job_id), keyword_type_filter="both")
@@ -417,7 +423,8 @@ async def test_trend_discovery_respects_keyword_cap(db_session, mock_trending):
 
     with patch("videoscout.workers.trend_discovery.get_youtube_service", return_value=mock_yt), \
          patch("videoscout.workers.trend_discovery.get_session", return_value=db_session), \
-         patch("videoscout.workers.trend_discovery.SuggestionEngine") as mock_engine_cls:
+         patch("videoscout.workers.trend_discovery.SuggestionEngine") as mock_engine_cls, \
+         patch("videoscout.workers.trend_discovery.enrich_top_scored", side_effect=_passthrough_enrich):
         instance = mock_engine_cls.return_value
         instance.check_tiktok_gate = AsyncMock(side_effect=fake_gate)
         await run_trend_discovery(str(job_id), keyword_type_filter="nurture")

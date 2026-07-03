@@ -33,6 +33,7 @@ from videoscout.core_engine.discovery_progress import (
     MAX_KEYWORDS_PER_JOB,
     TRENDING_VIDEO_LIMIT,
 )
+from videoscout.core_engine.evidence_enrichment import enrich_top_scored
 
 logger = logging.getLogger(__name__)
 
@@ -252,10 +253,11 @@ async def run_trend_discovery(
 
             _commit_job_progress(db, job, videos_scanned=video_index + 1)
 
+        all_scored: List[Dict[str, Any]] = []
+
         if (
             nurture_queue
             and keyword_type_filter != "beta"
-            and keywords_generated < MAX_KEYWORDS_PER_JOB
         ):
             if _job_was_cancelled(db, job):
                 logger.info("Discovery job %s cancelled before nurture scoring", job_id)
@@ -266,18 +268,12 @@ async def run_trend_discovery(
                 db=db,
                 keyword_type_filter=keyword_type_filter,
             )
-            for scored in nurture_scored:
-                if keywords_generated >= MAX_KEYWORDS_PER_JOB:
-                    break
-                keywords_generated = _save_keyword_if_new(
-                    db, job, scored, keywords_generated,
-                )
+            all_scored.extend(nurture_scored)
 
         beta_scored: List[Dict[str, Any]] = []
         if (
             beta_queue
             and keyword_type_filter != "nurture"
-            and keywords_generated < MAX_KEYWORDS_PER_JOB
         ):
             if _job_was_cancelled(db, job):
                 logger.info("Discovery job %s cancelled before beta scoring", job_id)
@@ -288,7 +284,21 @@ async def run_trend_discovery(
                 db=db,
                 keyword_type_filter=keyword_type_filter,
             )
-            for scored in beta_scored:
+            all_scored.extend(beta_scored)
+
+        if _job_was_cancelled(db, job):
+            logger.info("Discovery job %s cancelled before enrichment", job_id)
+            return
+
+        if all_scored:
+            _commit_job_progress(db, job, progress_phase="enrich_top")
+            all_scored = await enrich_top_scored(
+                all_scored,
+                db=db,
+                engine=engine,
+            )
+            all_scored.sort(key=lambda row: row.get("final_score", 0.0), reverse=True)
+            for scored in all_scored[:MAX_KEYWORDS_PER_JOB]:
                 if keywords_generated >= MAX_KEYWORDS_PER_JOB:
                     break
                 keywords_generated = _save_keyword_if_new(

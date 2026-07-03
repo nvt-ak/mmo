@@ -36,6 +36,13 @@ def build_platform_signals(
         youtube_block["velocity_percentile"] = velocity_percentile
     if trend_evidence.get("schema_version"):
         youtube_block["evidence_schema_version"] = trend_evidence["schema_version"]
+    supply = (trend_evidence.get("derived") or {}).get("supply_pressure")
+    if supply:
+        youtube_block["supply_pressure"] = {
+            "pressure_score": supply.get("pressure_score"),
+            "youtube_creator_diversity": (supply.get("youtube") or {}).get("creator_diversity"),
+            "tiktok_creator_diversity": (supply.get("tiktok") or {}).get("creator_diversity"),
+        }
 
     return {
         "tiktok": {

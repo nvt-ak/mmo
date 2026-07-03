@@ -305,6 +305,84 @@ class YouTubeService:
             logger.error(f"Error fetching video details: {e}")
             return None
 
+    def search_videos_by_keyword(
+        self,
+        keyword: str,
+        *,
+        max_results: int = 25,
+        days: int = 7,
+    ) -> List[Dict]:
+        """Search recent YouTube videos by keyword (supply-pressure round-trip)."""
+        keyword = (keyword or "").strip()
+        if not keyword:
+            return []
+
+        published_after = (
+            datetime.now(timezone.utc) - timedelta(days=days)
+        ).isoformat().replace("+00:00", "Z")
+        logger.debug(
+            "YouTube video search keyword=%r max=%d days=%d",
+            keyword,
+            max_results,
+            days,
+        )
+        try:
+            search_resp = self.client.search().list(
+                part="snippet",
+                q=keyword,
+                type="video",
+                maxResults=max_results,
+                order="date",
+                publishedAfter=published_after,
+                relevanceLanguage="en",
+            ).execute()
+            video_ids: List[str] = []
+            snippets: Dict[str, Dict] = {}
+            for item in search_resp.get("items", []):
+                video_id = item.get("id", {}).get("videoId")
+                if not video_id or video_id in snippets:
+                    continue
+                snippet = item.get("snippet", {})
+                video_ids.append(video_id)
+                snippets[video_id] = {
+                    "title": snippet.get("title", ""),
+                    "channel_id": snippet.get("channelId", ""),
+                    "published_at": snippet.get("publishedAt"),
+                }
+
+            if not video_ids:
+                return []
+
+            stats_resp = self.client.videos().list(
+                part="statistics",
+                id=",".join(video_ids),
+            ).execute()
+            stats_by_id = {
+                row["id"]: row.get("statistics", {})
+                for row in stats_resp.get("items", [])
+            }
+
+            results: List[Dict] = []
+            for video_id in video_ids:
+                snippet = snippets[video_id]
+                stats = stats_by_id.get(video_id, {})
+                results.append({
+                    "video_id": video_id,
+                    "title": snippet.get("title", ""),
+                    "channel_id": snippet.get("channel_id", ""),
+                    "published_at": snippet.get("published_at"),
+                    "view_count": int(stats.get("viewCount") or 0),
+                })
+            logger.info(
+                "YouTube search returned %d videos for keyword %r",
+                len(results),
+                keyword,
+            )
+            return results
+        except Exception as e:
+            logger.error("YouTube video search failed for %r: %s", keyword, e)
+            return []
+
     def get_trending_videos(
         self,
         region_code: str = "DE",

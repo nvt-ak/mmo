@@ -16,6 +16,7 @@ PHASE_LABELS = {
     "scan_videos": "Checking TikTok gates…",
     "score_nurture": "Scoring nurture keywords…",
     "score_beta": "Scoring beta keywords…",
+    "enrich_top": "Enriching top keywords…",
     "complete": "Discovery complete",
     "failed": "Discovery failed",
 }
@@ -42,7 +43,7 @@ def _running_percent(
     )
     keyword_pct = int(15 * min(keywords, MAX_KEYWORDS_PER_JOB) / MAX_KEYWORDS_PER_JOB)
 
-    if phase in ("score_beta", "score_nurture"):
+    if phase in ("score_beta", "score_nurture", "enrich_top"):
         return min(75 + int(20 * keywords / MAX_KEYWORDS_PER_JOB), 95)
 
     return min(max(video_pct + candidate_pct + keyword_pct, 5), 94)
@@ -60,6 +61,8 @@ def _running_label(
         return PHASE_LABELS["score_beta"]
     if phase == "score_nurture":
         return PHASE_LABELS["score_nurture"]
+    if phase == "enrich_top":
+        return PHASE_LABELS["enrich_top"]
     if keywords > 0:
         return f"Saving keywords ({keywords}/{MAX_KEYWORDS_PER_JOB})"
     if candidates > 0:

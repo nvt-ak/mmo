@@ -368,12 +368,24 @@ def _parse_search_item(item: Dict[str, Any]) -> Dict[str, Any]:
         except (TypeError, ValueError):
             created_at = ""
 
+    author = item.get("author") or {}
+    author_meta = item.get("authorMeta") or {}
+    author_id = (
+        author.get("uniqueId")
+        or author.get("id")
+        or author_meta.get("uniqueId")
+        or author_meta.get("id")
+        or item.get("authorId")
+        or ""
+    )
+
     return {
         "view_count": stats.get("playCount") or stats.get("play_count") or 0,
         "like_count": stats.get("diggCount") or stats.get("digg_count") or 0,
         "comment_count": stats.get("commentCount") or stats.get("comment_count") or 0,
         "share_count": stats.get("shareCount") or stats.get("share_count") or 0,
         "created_at": created_at,
+        "author_id": str(author_id) if author_id else "",
     }
 
 
