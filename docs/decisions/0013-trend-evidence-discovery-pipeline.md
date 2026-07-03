@@ -173,7 +173,7 @@ Tradeoffs:
 | --- | --- | --- |
 | 1 | TrendEvidence v1, velocity raw + percentile, logging/replay | US-062 |
 | 2 | Top-10 enrichment, Tier-1 channel, supply pressure + creator diversity | US-063 (draft) |
-| 3 | Dual-source velocity feed, LifecycleClassifier, history prior | US-064 (draft) |
+| 3 | Dual-source velocity feed, LifecycleClassifier, history prior | US-064 |
 
 Cheap pre-code experiment: backfill velocity on 50 trending videos; manual label
 30 keywords; check velocity percentile vs early/stable/late/noise before wiring scorer.

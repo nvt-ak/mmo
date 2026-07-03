@@ -17,6 +17,7 @@ def build_platform_signals(
     confidence: Optional[float] = None,
     risk_flags: Optional[list] = None,
     blend: Optional[Dict[str, Any]] = None,
+    lifecycle_stage: Optional[str] = None,
 ) -> Dict[str, Any]:
     trend_signals = dict(candidate.get("trend_signals") or {})
     trend_evidence = dict(candidate.get("trend_evidence") or {})
@@ -44,6 +45,26 @@ def build_platform_signals(
             "tiktok_creator_diversity": (supply.get("tiktok") or {}).get("creator_diversity"),
         }
 
+    provenance = trend_evidence.get("provenance") or {}
+    if provenance.get("confidence_type"):
+        youtube_block["confidence_type"] = provenance["confidence_type"]
+    history = (trend_evidence.get("derived") or {}).get("history_prior")
+    if history:
+        youtube_block["history_prior_score"] = history.get("prior_score")
+
+    agent_block: Dict[str, Any] = {
+        "scored_with": scored_with,
+        "rationale": rationale or "",
+        "confidence": round(float(confidence or 0.0), 3),
+        "risk_flags": list(risk_flags or []),
+        "component_scores": component_scores,
+        "component_reasons": component_reasons,
+    }
+    if blend:
+        agent_block["blend"] = blend
+    if lifecycle_stage:
+        agent_block["lifecycle_stage"] = lifecycle_stage
+
     return {
         "tiktok": {
             "status": tier_to_status.get(saturation_tier, "moderate"),
@@ -52,13 +73,5 @@ def build_platform_signals(
             "stats": tiktok_stats,
         },
         "youtube": youtube_block,
-        "agent": {
-            "scored_with": scored_with,
-            "rationale": rationale or "",
-            "confidence": round(float(confidence or 0.0), 3),
-            "risk_flags": list(risk_flags or []),
-            "component_scores": component_scores,
-            "component_reasons": component_reasons,
-            **({"blend": blend} if blend else {}),
-        },
+        "agent": agent_block,
     }

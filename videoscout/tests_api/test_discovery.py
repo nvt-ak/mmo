@@ -36,6 +36,13 @@ async def _passthrough_enrich(items, **kwargs):
     return items
 
 
+def _mock_discovery_sources(mock_trending):
+    return [
+        ("most_popular", mock_trending),
+        ("velocity", []),
+    ]
+
+
 def test_discovery_run_creates_job(client, db_session):
     with patch("videoscout.api.discovery.run_trend_discovery_sync"):
         resp = client.post(
@@ -195,7 +202,7 @@ def test_compute_discovery_progress_running_phase():
         job_type="trend_discovery",
         keyword_type_filter="nurture",
         progress_phase="scan_videos",
-        videos_scanned=5,
+        videos_scanned=8,
         candidates_checked=8,
         keywords_generated=0,
     )
@@ -283,9 +290,6 @@ async def test_trend_discovery_worker_respects_cancelled_job(db_session, mock_tr
     db_session.commit()
     job_id = job.id
 
-    mock_yt = MagicMock()
-    mock_yt.get_trending_videos.return_value = mock_trending
-
     async def fake_gate(keyword, gate_profile):
         row = db_session.query(DiscoveryJobModel).filter(DiscoveryJobModel.id == job_id).first()
         row.status = "failed"
@@ -300,7 +304,7 @@ async def test_trend_discovery_worker_respects_cancelled_job(db_session, mock_tr
             "tiktok_status": "moderate",
         }
 
-    with patch("videoscout.workers.trend_discovery.get_youtube_service", return_value=mock_yt), \
+    with patch("videoscout.workers.trend_discovery.fetch_discovery_sources", return_value=_mock_discovery_sources(mock_trending)), \
          patch("videoscout.workers.trend_discovery.get_session", return_value=db_session), \
          patch("videoscout.workers.trend_discovery.SuggestionEngine") as mock_engine_cls, \
          patch("videoscout.workers.trend_discovery.enrich_top_scored", side_effect=_passthrough_enrich):
@@ -324,9 +328,6 @@ async def test_trend_discovery_worker_upserts(db_session, mock_trending):
     db_session.commit()
     job_id = job.id
     engine = db_session.get_bind()
-
-    mock_yt = MagicMock()
-    mock_yt.get_trending_videos.return_value = mock_trending
 
     async def fake_gate(keyword, gate_profile):
         return {
@@ -355,7 +356,7 @@ async def test_trend_discovery_worker_upserts(db_session, mock_trending):
                 scored.append(row)
         return scored
 
-    with patch("videoscout.workers.trend_discovery.get_youtube_service", return_value=mock_yt), \
+    with patch("videoscout.workers.trend_discovery.fetch_discovery_sources", return_value=_mock_discovery_sources(mock_trending)), \
          patch("videoscout.workers.trend_discovery.get_session", return_value=db_session), \
          patch("videoscout.workers.trend_discovery.SuggestionEngine") as mock_engine_cls, \
          patch("videoscout.workers.trend_discovery.score_beta_candidates_batch", side_effect=fake_beta_batch), \
@@ -393,7 +394,14 @@ async def test_trend_discovery_respects_keyword_cap(db_session, mock_trending):
     )
 
     trending = [
-        {"id": f"v{i}", "title": f"Trend Topic Number {i} Goes Viral Today", "channel_id": f"UC{i}"}
+        {
+            "id": f"v{i}",
+            "title": f"Trend Topic Number {i} Goes Viral Today",
+            "channel_id": f"UC{i}",
+            "published_at": datetime.utcnow().isoformat() + "Z",
+            "view_count": 10_000 + i,
+            "category_id": "22",
+        }
         for i in range(12)
     ]
 
@@ -402,9 +410,6 @@ async def test_trend_discovery_respects_keyword_cap(db_session, mock_trending):
     db_session.commit()
     job_id = job.id
     engine = db_session.get_bind()
-
-    mock_yt = MagicMock()
-    mock_yt.get_trending_videos.return_value = trending
 
     async def fake_gate(keyword, gate_profile):
         return {
@@ -421,7 +426,7 @@ async def test_trend_discovery_respects_keyword_cap(db_session, mock_trending):
             "tiktok_status": "moderate",
         }
 
-    with patch("videoscout.workers.trend_discovery.get_youtube_service", return_value=mock_yt), \
+    with patch("videoscout.workers.trend_discovery.fetch_discovery_sources", return_value=[("most_popular", trending), ("velocity", [])]), \
          patch("videoscout.workers.trend_discovery.get_session", return_value=db_session), \
          patch("videoscout.workers.trend_discovery.SuggestionEngine") as mock_engine_cls, \
          patch("videoscout.workers.trend_discovery.enrich_top_scored", side_effect=_passthrough_enrich):
@@ -436,8 +441,7 @@ async def test_trend_discovery_respects_keyword_cap(db_session, mock_trending):
         assert job_row is not None
         assert job_row.status == "completed"
         assert job_row.keywords_generated <= MAX_KEYWORDS_PER_JOB
-        mock_yt.get_trending_videos.assert_called_once()
-        assert mock_yt.get_trending_videos.call_args.kwargs["max_results"] == 10
+        assert job_row.sources_scanned >= 1
     finally:
         verify.close()
 

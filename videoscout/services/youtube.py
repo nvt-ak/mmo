@@ -421,6 +421,107 @@ class YouTubeService:
             logger.error("Error fetching trending videos: %s", e)
             return []
 
+    def get_emergence_videos(
+        self,
+        region_code: str = "DE",
+        max_results: int = 10,
+        *,
+        hours: int = 72,
+        search_queries: Optional[List[str]] = None,
+    ) -> List[Dict]:
+        """
+        Source B — recent uploads ranked by view velocity (emergence feed).
+
+        Uses a small set of search queries (niche topics) + order=viewCount.
+        """
+        queries = [q.strip() for q in (search_queries or []) if q and q.strip()]
+        if not queries:
+            queries = ["trending", "viral"]
+
+        published_after = (
+            datetime.now(timezone.utc) - timedelta(hours=hours)
+        ).isoformat().replace("+00:00", "Z")
+        seen_ids: set[str] = set()
+        collected: List[Dict] = []
+
+        for query in queries[:3]:
+            try:
+                search_resp = self.client.search().list(
+                    part="snippet",
+                    q=query,
+                    type="video",
+                    order="viewCount",
+                    publishedAfter=published_after,
+                    regionCode=region_code,
+                    maxResults=min(max_results, 25),
+                    relevanceLanguage="en",
+                ).execute()
+            except Exception as exc:
+                logger.warning(
+                    "Emergence search failed region=%s query=%r: %s",
+                    region_code,
+                    query,
+                    exc,
+                )
+                continue
+
+            video_ids: List[str] = []
+            snippets: Dict[str, Dict] = {}
+            for item in search_resp.get("items", []):
+                video_id = item.get("id", {}).get("videoId")
+                if not video_id or video_id in seen_ids:
+                    continue
+                snippet = item.get("snippet", {})
+                video_ids.append(video_id)
+                snippets[video_id] = {
+                    "title": snippet.get("title", ""),
+                    "channel_id": snippet.get("channelId", ""),
+                    "published_at": snippet.get("publishedAt"),
+                    "category_id": snippet.get("categoryId"),
+                }
+
+            if not video_ids:
+                continue
+
+            try:
+                stats_resp = self.client.videos().list(
+                    part="statistics",
+                    id=",".join(video_ids),
+                ).execute()
+            except Exception as exc:
+                logger.warning("Emergence stats fetch failed: %s", exc)
+                continue
+
+            stats_by_id = {
+                row["id"]: row.get("statistics", {})
+                for row in stats_resp.get("items", [])
+            }
+            for video_id in video_ids:
+                seen_ids.add(video_id)
+                snippet = snippets[video_id]
+                stats = stats_by_id.get(video_id, {})
+                collected.append({
+                    "id": video_id,
+                    "title": snippet.get("title", ""),
+                    "channel_id": snippet.get("channel_id", ""),
+                    "published_at": snippet.get("published_at"),
+                    "view_count": int(stats.get("viewCount") or 0),
+                    "category_id": snippet.get("category_id"),
+                })
+
+        collected.sort(
+            key=lambda row: row.get("view_count") or 0,
+            reverse=True,
+        )
+        results = collected[:max_results]
+        logger.info(
+            "Fetched %d emergence videos for %s (queries=%d)",
+            len(results),
+            region_code,
+            len(queries[:3]),
+        )
+        return results
+
     @staticmethod
     def _normalize_transcript(fetched) -> List[Dict]:
         """Convert youtube-transcript-api result to engine segment format."""

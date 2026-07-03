@@ -7,16 +7,19 @@ if TYPE_CHECKING:
     from videoscout.db.models import DiscoveryJobModel
 
 TRENDING_VIDEO_LIMIT = 10
+VELOCITY_VIDEO_LIMIT = 10
 MAX_KEYWORDS_PER_JOB = 10
-MAX_CANDIDATES_ESTIMATE = TRENDING_VIDEO_LIMIT * 4
+MAX_CANDIDATES_ESTIMATE = (TRENDING_VIDEO_LIMIT + VELOCITY_VIDEO_LIMIT) * 4
 
 PHASE_LABELS = {
     "starting": "Starting discovery…",
     "fetch_trends": "Fetching YouTube trends…",
+    "fetch_velocity": "Fetching emergence videos…",
     "scan_videos": "Checking TikTok gates…",
     "score_nurture": "Scoring nurture keywords…",
     "score_beta": "Scoring beta keywords…",
     "enrich_top": "Enriching top keywords…",
+    "rank_final": "Final ranking…",
     "complete": "Discovery complete",
     "failed": "Discovery failed",
 }
@@ -34,16 +37,17 @@ def _running_percent(
     candidates: int,
     keywords: int,
 ) -> int:
-    if phase in ("starting", "fetch_trends") and videos == 0:
-        return 5 if phase == "fetch_trends" else 2
+    if phase in ("starting", "fetch_trends", "fetch_velocity") and videos == 0:
+        return 5 if phase in ("fetch_trends", "fetch_velocity") else 2
 
-    video_pct = 10 + int(30 * min(videos, TRENDING_VIDEO_LIMIT) / TRENDING_VIDEO_LIMIT)
+    video_cap = TRENDING_VIDEO_LIMIT + VELOCITY_VIDEO_LIMIT
+    video_pct = 10 + int(30 * min(videos, video_cap) / video_cap)
     candidate_pct = int(
         35 * min(candidates, MAX_CANDIDATES_ESTIMATE) / MAX_CANDIDATES_ESTIMATE,
     )
     keyword_pct = int(15 * min(keywords, MAX_KEYWORDS_PER_JOB) / MAX_KEYWORDS_PER_JOB)
 
-    if phase in ("score_beta", "score_nurture", "enrich_top"):
+    if phase in ("score_beta", "score_nurture", "enrich_top", "rank_final"):
         return min(75 + int(20 * keywords / MAX_KEYWORDS_PER_JOB), 95)
 
     return min(max(video_pct + candidate_pct + keyword_pct, 5), 94)
@@ -57,6 +61,10 @@ def _running_label(
 ) -> str:
     if phase == "fetch_trends":
         return PHASE_LABELS["fetch_trends"]
+    if phase == "fetch_velocity":
+        return PHASE_LABELS["fetch_velocity"]
+    if phase == "rank_final":
+        return PHASE_LABELS["rank_final"]
     if phase == "score_beta":
         return PHASE_LABELS["score_beta"]
     if phase == "score_nurture":
@@ -68,7 +76,7 @@ def _running_label(
     if candidates > 0:
         return PHASE_LABELS["scan_videos"]
     if videos > 0:
-        return f"Scanning trends ({videos}/{TRENDING_VIDEO_LIMIT})"
+        return f"Scanning trends ({videos}/{TRENDING_VIDEO_LIMIT + VELOCITY_VIDEO_LIMIT})"
     return PHASE_LABELS.get(phase, "Discovering…")
 
 

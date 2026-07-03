@@ -23,6 +23,7 @@ from videoscout.schemas import (
 from videoscout.core_engine.discovery_progress import (
     MAX_KEYWORDS_PER_JOB,
     TRENDING_VIDEO_LIMIT,
+    VELOCITY_VIDEO_LIMIT,
     compute_discovery_progress,
 )
 from videoscout.workers.trend_discovery import run_trend_discovery_sync
@@ -42,7 +43,7 @@ def _job_to_response(job: DiscoveryJobModel) -> DiscoveryJobResponse:
         candidates_checked=job.candidates_checked or 0,
         keywords_generated=job.keywords_generated or 0,
         max_keywords=MAX_KEYWORDS_PER_JOB,
-        max_videos=TRENDING_VIDEO_LIMIT,
+        max_videos=TRENDING_VIDEO_LIMIT + VELOCITY_VIDEO_LIMIT,
         error_message=job.error_message,
         created_at=job.created_at,
         started_at=job.started_at,

@@ -9,7 +9,14 @@ from typing import Any, Dict, List, Optional, Tuple
 SCHEMA_VERSION = "1"
 
 SOURCE_MOST_POPULAR = "youtube_most_popular"
+SOURCE_VELOCITY = "youtube_velocity"
 CONFIDENCE_POPULARITY = "popularity"
+CONFIDENCE_EMERGENCE = "emergence"
+
+PROVENANCE_BY_SOURCE_KIND = {
+    "most_popular": (SOURCE_MOST_POPULAR, CONFIDENCE_POPULARITY, "youtube_trend"),
+    "velocity": (SOURCE_VELOCITY, CONFIDENCE_EMERGENCE, "youtube_velocity"),
+}
 
 
 def _utc_now_iso() -> str:
@@ -96,10 +103,15 @@ class EvidenceBuilder:
         *,
         keyword: str,
         source_video: Dict[str, Any],
-        discovery_source: str = "youtube_trend",
+        source_kind: str = "most_popular",
         velocity_percentile: Optional[float] = None,
         enrichment_tier: int = 0,
+        history_prior: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        provenance_source, confidence_type, _discovery = PROVENANCE_BY_SOURCE_KIND.get(
+            source_kind,
+            PROVENANCE_BY_SOURCE_KIND["most_popular"],
+        )
         velocity_raw = source_video.get("velocity_raw")
         if velocity_raw is None:
             velocity_raw = compute_velocity_raw(
@@ -122,8 +134,8 @@ class EvidenceBuilder:
                 "enrichment_tier": enrichment_tier,
             },
             "provenance": {
-                "source": SOURCE_MOST_POPULAR,
-                "confidence_type": CONFIDENCE_POPULARITY,
+                "source": provenance_source,
+                "confidence_type": confidence_type,
                 "region": self.region,
                 "detected_at": _utc_now_iso(),
             },
@@ -143,9 +155,16 @@ class EvidenceBuilder:
             "derived": {
                 "velocity": derived_velocity or None,
                 "supply_pressure": None,
-                "history_prior": None,
+                "history_prior": history_prior,
             },
         }
+
+
+def discovery_source_for_kind(source_kind: str) -> str:
+    return PROVENANCE_BY_SOURCE_KIND.get(
+        source_kind,
+        PROVENANCE_BY_SOURCE_KIND["most_popular"],
+    )[2]
 
 
 class LifecycleClassifier:
@@ -155,8 +174,19 @@ class LifecycleClassifier:
     def classify(evidence: Dict[str, Any]) -> str:
         velocity = (evidence.get("derived") or {}).get("velocity") or {}
         percentile = velocity.get("percentile_region_category")
+        provenance = evidence.get("provenance") or {}
+        confidence_type = provenance.get("confidence_type")
+        supply = (evidence.get("derived") or {}).get("supply_pressure") or {}
+        pressure_score = float(supply.get("pressure_score") or 0.0)
+
         if percentile is None:
             return "unknown"
+
+        if pressure_score >= 0.75:
+            return "late"
+
+        if confidence_type == CONFIDENCE_EMERGENCE and percentile >= 0.55:
+            return "early_accelerating"
         if percentile >= 0.75:
             return "early_accelerating"
         if percentile >= 0.45:

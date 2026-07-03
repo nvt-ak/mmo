@@ -15,23 +15,28 @@ from videoscout.core_engine.engine import SuggestionEngine
 from videoscout.core_engine.keyword_classifier import classify_keyword_type
 from videoscout.core_engine.keyword_scorer import score_beta_candidates_batch
 from videoscout.core_engine.nurture_scorer import score_nurture_candidates_batch
+from videoscout.core_engine.candidate_generator import (
+    fetch_discovery_sources,
+    iter_scored_source_videos,
+)
+from videoscout.core_engine.discovery_ranker import apply_final_ranking
+from videoscout.core_engine.history_prior import build_history_prior
 from videoscout.core_engine.trend_discovery import extract_keyword_candidates
 from videoscout.core_engine.trend_evidence import (
     SCHEMA_VERSION,
     EvidenceBuilder,
-    attach_velocity_to_videos,
-    compute_velocity_percentiles,
+    discovery_source_for_kind,
     serialize_evidence,
     trend_signals_from_evidence,
 )
 from videoscout.db import get_session
 from videoscout.db.models import DiscoveryJobModel, SuggestionModel
-from videoscout.services.youtube import get_youtube_service
 from videoscout.services.tiktok import get_tiktok_service
 
 from videoscout.core_engine.discovery_progress import (
     MAX_KEYWORDS_PER_JOB,
     TRENDING_VIDEO_LIMIT,
+    VELOCITY_VIDEO_LIMIT,
 )
 from videoscout.core_engine.evidence_enrichment import enrich_top_scored
 
@@ -163,26 +168,28 @@ async def run_trend_discovery(
     tiktok.start_batch()
 
     try:
-        trending = get_youtube_service().get_trending_videos(
+        _commit_job_progress(db, job, progress_phase="fetch_trends")
+        sources = fetch_discovery_sources(
             region_code=region_code,
-            max_results=TRENDING_VIDEO_LIMIT,
+            popular_limit=TRENDING_VIDEO_LIMIT,
+            velocity_limit=VELOCITY_VIDEO_LIMIT,
+            db=db,
         )
-        trending = attach_velocity_to_videos(trending)
-        velocity_percentiles = compute_velocity_percentiles(trending, region=region_code)
+        sources_scanned = sum(1 for _, videos in sources if videos)
         evidence_builder = EvidenceBuilder(
             pipeline_run_id=str(job_uuid),
             region=region_code,
         )
         logger.info(
-            "Discovery job %s trend_evidence schema=%s videos=%d",
+            "Discovery job %s trend_evidence schema=%s sources=%d",
             job_id,
             SCHEMA_VERSION,
-            len(trending),
+            sources_scanned,
         )
         _commit_job_progress(
             db,
             job,
-            sources_scanned=1 if trending else 0,
+            sources_scanned=sources_scanned,
             progress_phase="scan_videos",
         )
 
@@ -190,27 +197,32 @@ async def run_trend_discovery(
         beta_queue: List[Dict[str, Any]] = []
         nurture_queue: List[Dict[str, Any]] = []
         max_word_width = 3 if keyword_type_filter == "nurture" else 5
+        videos_scanned = 0
 
-        for video_index, video in enumerate(trending):
-            if keywords_generated >= MAX_KEYWORDS_PER_JOB:
-                break
+        for source_kind, video, velocity_percentiles in iter_scored_source_videos(
+            sources,
+            region_code=region_code,
+        ):
+            videos_scanned += 1
+            discovery_source = discovery_source_for_kind(source_kind)
             for candidate in extract_keyword_candidates(
                 video["title"],
                 max_word_width=max_word_width,
+                discovery_source=discovery_source,
             ):
-                if keywords_generated >= MAX_KEYWORDS_PER_JOB:
-                    break
                 keyword = candidate["keyword"].lower()
                 if keyword in seen:
                     continue
                 seen.add(keyword)
 
+                history_prior = build_history_prior(db, candidate["keyword"])
                 trend_evidence = serialize_evidence(
                     evidence_builder.build(
                         keyword=candidate["keyword"],
                         source_video=video,
-                        discovery_source=candidate.get("discovery_source", "youtube_trend"),
+                        source_kind=source_kind,
                         velocity_percentile=velocity_percentiles.get(str(video.get("id") or "")),
+                        history_prior=history_prior,
                     )
                 )
                 trend_signals = trend_signals_from_evidence(trend_evidence)
@@ -218,6 +230,7 @@ async def run_trend_discovery(
                 enriched_candidate = {
                     **candidate,
                     "keyword": candidate["keyword"],
+                    "discovery_source": discovery_source,
                     "trend_evidence": trend_evidence,
                     "trend_signals": {
                         **trend_signals,
@@ -228,7 +241,7 @@ async def run_trend_discovery(
 
                 provisional_type = classify_keyword_type(
                     enriched_candidate["keyword"],
-                    trend_source=enriched_candidate.get("discovery_source", "youtube_trend"),
+                    trend_source=discovery_source,
                 )
                 gate_profile = "light" if provisional_type == "nurture" else "full"
                 tiktok_gate = await engine.check_tiktok_gate(
@@ -251,7 +264,7 @@ async def run_trend_discovery(
                     "tiktok_gate": tiktok_gate,
                 })
 
-            _commit_job_progress(db, job, videos_scanned=video_index + 1)
+            _commit_job_progress(db, job, videos_scanned=videos_scanned)
 
         all_scored: List[Dict[str, Any]] = []
 
@@ -297,7 +310,8 @@ async def run_trend_discovery(
                 db=db,
                 engine=engine,
             )
-            all_scored.sort(key=lambda row: row.get("final_score", 0.0), reverse=True)
+            _commit_job_progress(db, job, progress_phase="rank_final")
+            all_scored = apply_final_ranking(all_scored)
             for scored in all_scored[:MAX_KEYWORDS_PER_JOB]:
                 if keywords_generated >= MAX_KEYWORDS_PER_JOB:
                     break

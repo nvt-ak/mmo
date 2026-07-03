@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Literal
 
 KeywordType = Literal["nurture", "beta"]
-TrendSource = Literal["youtube_trend", "social", "niche_web", "manual"]
+TrendSource = Literal["youtube_trend", "youtube_velocity", "social", "niche_web", "manual"]
 SaturationTier = Literal["fresh", "moderate", "saturated"]
 
 NURTURE_MIN_SCORE = 0.25
@@ -46,6 +46,9 @@ def classify_keyword_type(
     # Trend source
     if source in ("youtube_trend", "social"):
         nurture_score += 2
+    elif source == "youtube_velocity":
+        beta_score += 1
+        nurture_score += 1
     elif source == "niche_web":
         beta_score += 2
     elif source == "manual":
