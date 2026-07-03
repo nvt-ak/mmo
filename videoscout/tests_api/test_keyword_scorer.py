@@ -7,7 +7,6 @@ import pytest
 from videoscout.core_engine.keyword_scorer import (
     BLEND_HEURISTIC_WEIGHT,
     BLEND_LLM_WEIGHT,
-    BetaScoringError,
     clamp_components,
     heuristic_final_score,
     score_beta_candidate,
@@ -224,17 +223,17 @@ async def test_score_beta_no_blend_after_calibration_threshold(db_session):
 
 
 @pytest.mark.asyncio
-async def test_score_beta_llm_failure_raises(db_session):
+async def test_score_beta_llm_failure_returns_none(db_session):
     llm = MagicMock()
     llm.chat.completions.create.side_effect = RuntimeError("llm down")
 
-    with pytest.raises(BetaScoringError):
-        await score_beta_candidate(
-            _candidate(),
-            tiktok_gate=_tiktok_gate(),
-            db=db_session,
-            llm_client=llm,
-        )
+    scored = await score_beta_candidate(
+        _candidate(),
+        tiktok_gate=_tiktok_gate(),
+        db=db_session,
+        llm_client=llm,
+    )
+    assert scored is None
 
 
 def test_weighted_final_score_recomputes_server_side():
@@ -294,5 +293,38 @@ async def test_score_beta_candidates_batch_skips_failed_chunk(db_session):
     llm.chat.completions.create.side_effect = RuntimeError("llm down")
     items = [{"candidate": _candidate(), "tiktok_gate": _tiktok_gate()}]
 
-    with pytest.raises(BetaScoringError):
-        await score_beta_candidates_batch(items, db=db_session, llm_client=llm)
+    scored = await score_beta_candidates_batch(items, db=db_session, llm_client=llm)
+    assert scored == []
+
+
+@pytest.mark.asyncio
+async def test_score_beta_candidates_batch_splits_on_timeout(db_session):
+    keywords = [
+        "beta long tail keyword phrase",
+        "another beta keyword phrase here",
+        "third beta keyword phrase now",
+        "fourth beta keyword phrase test",
+    ]
+    items = [
+        {"candidate": _candidate(keyword=k), "tiktok_gate": _tiktok_gate()}
+        for k in keywords
+    ]
+
+    def side_effect(*args, **kwargs):
+        prompt = kwargs["messages"][0]["content"]
+        matched = [k for k in keywords if k in prompt]
+        if len(matched) > 2:
+            raise RuntimeError("Request timed out.")
+        return _mock_llm(_batch_llm_response(matched)).chat.completions.create.return_value
+
+    llm = MagicMock()
+    llm.chat.completions.create.side_effect = side_effect
+
+    scored = await score_beta_candidates_batch(
+        items,
+        db=db_session,
+        llm_client=llm,
+    )
+
+    assert len(scored) == 4
+    assert llm.chat.completions.create.call_count == 3

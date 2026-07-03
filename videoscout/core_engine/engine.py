@@ -256,9 +256,7 @@ Constraints:
             }
         """
         try:
-            result = self.tiktok.search_videos(keyword, period='7d', limit=50)
-            if inspect.isawaitable(result):
-                result = await result
+            result = await self.tiktok.search_videos_async(keyword, period='7d', limit=50)
             if not isinstance(result, dict):
                 result = {
                     'total_count': 0,
@@ -529,11 +527,18 @@ Constraints:
         try:
             result = await self.calculate_saturation(keyword)
             if result.get("gate_unavailable"):
-                logger.warning(
-                    "TikTok gate unavailable for %r (%s)",
-                    keyword,
-                    gate_profile,
-                )
+                if gate_profile == "light":
+                    logger.debug(
+                        "TikTok gate unavailable for %r (%s); surfacing unverified",
+                        keyword,
+                        gate_profile,
+                    )
+                else:
+                    logger.warning(
+                        "TikTok gate unavailable for %r (%s)",
+                        keyword,
+                        gate_profile,
+                    )
                 if gate_profile == "light":
                     return {
                         "surface": True,

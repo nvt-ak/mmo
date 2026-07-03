@@ -48,6 +48,8 @@ Active stories for VideoScout. Create story packets before implementation
 | US-057 | Batch beta scoring pipeline | E09 | normal | implemented |
 | US-058 | Discovery SSE + reload persistence | E09 | normal | implemented |
 | US-059 | Discovery progress bar | E09 | tiny | implemented |
+| US-060 | TikTok msToken pool + proxy rotation | E09 | normal | implemented |
+| US-061 | Runtime scoring rubric + batch spread | E09 | normal | implemented |
 
 ## Roadmap Phases
 

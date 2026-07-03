@@ -16,10 +16,68 @@ const WEIGHT_LABELS: Record<keyof ScoringWeights, string> = {
 
 type SettingsData = Awaited<ReturnType<typeof api.getSettings>>;
 
+function RubricEditor({
+  label,
+  description,
+  value,
+  defaultText,
+  isCustom,
+  onChange,
+  onReset,
+}: {
+  label: string;
+  description: string;
+  value: string;
+  defaultText: string;
+  isCustom: boolean;
+  onChange: (text: string) => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="font-editorial text-lg text-(--foreground-strong)">{label}</h3>
+          <p className="mt-1 text-sm text-(--muted)">{description}</p>
+        </div>
+        <span className={`tag-pill shrink-0 ${isCustom ? "tag-blue" : "tag-green"}`}>
+          {isCustom ? "Custom" : "Default"}
+        </span>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={14}
+        spellCheck={false}
+        className="field-input min-h-[280px] resize-y font-mono text-xs leading-relaxed"
+      />
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-(--muted)">
+          Injected into LLM prompt at discovery. Edit to override ship default.
+        </p>
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={!isCustom && value.trim() === defaultText.trim()}
+          className="btn btn-ghost text-xs disabled:opacity-40"
+        >
+          Reset to default
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SettingsForm({ initial }: { initial: SettingsData }) {
   const queryClient = useQueryClient();
+  const rubrics = initial.scoring_rubrics;
+  const rubricsFromApi = initial.rubrics_available === true;
   const [weights, setWeights] = useState(initial.weights);
   const [topics, setTopics] = useState(initial.niche.topics.join(", "));
+  const [nurtureRubric, setNurtureRubric] = useState(rubrics.nurture.text);
+  const [betaRubric, setBetaRubric] = useState(rubrics.beta.text);
+  const [nurtureCustom, setNurtureCustom] = useState(rubrics.nurture.is_custom);
+  const [betaCustom, setBetaCustom] = useState(rubrics.beta.is_custom);
   const [llmBaseUrl, setLlmBaseUrl] = useState(initial.llm.base_url);
   const [llmModel, setLlmModel] = useState(initial.llm.model);
   const [llmApiKey, setLlmApiKey] = useState("");
@@ -56,6 +114,10 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
           base_url: llmBaseUrl.trim(),
           model: llmModel.trim(),
           ...(llmApiKey.trim() ? { api_key: llmApiKey.trim() } : {}),
+        },
+        scoring_rubrics: {
+          nurture: nurtureRubric,
+          beta: betaRubric,
         },
       }),
     onSuccess: () => {
@@ -119,6 +181,55 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
               ))}
           </div>
         )}
+      </section>
+
+      <section className="surface-card p-6 animate-fade-rise">
+        <h2 className="font-editorial text-xl text-(--foreground-strong)">Scoring instructions</h2>
+        <p className="mt-1 text-sm text-(--muted)">
+          Runtime rubrics sent to the LLM when ranking keywords during discovery.
+        </p>
+        {!rubricsFromApi && (
+          <div className="mt-4 surface-card bg-(--pastel-yellow-bg) px-4 py-3 text-sm text-(--pastel-yellow-text)">
+            Showing ship defaults — API chưa US-061. Edit được; Save persist sau khi restart
+            API + <code className="font-mono text-xs">alembic upgrade head</code>.
+          </div>
+        )}
+        <div className="mt-6 space-y-10">
+          <RubricEditor
+            label="Nurture track"
+            description="Fast TikTok keywords (2–3 words) from YouTube trending titles."
+            value={nurtureRubric}
+            defaultText={rubrics.nurture.default_text}
+            isCustom={nurtureCustom}
+            onChange={(text) => {
+              setNurtureRubric(text);
+              setNurtureCustom(
+                text.trim() !== rubrics.nurture.default_text.trim(),
+              );
+            }}
+            onReset={() => {
+              setNurtureRubric(rubrics.nurture.default_text);
+              setNurtureCustom(false);
+            }}
+          />
+          <RubricEditor
+            label="Beta track"
+            description="Full-gate niche phrases (3–5 words) with knowledge-base context."
+            value={betaRubric}
+            defaultText={rubrics.beta.default_text}
+            isCustom={betaCustom}
+            onChange={(text) => {
+              setBetaRubric(text);
+              setBetaCustom(
+                text.trim() !== rubrics.beta.default_text.trim(),
+              );
+            }}
+            onReset={() => {
+              setBetaRubric(rubrics.beta.default_text);
+              setBetaCustom(false);
+            }}
+          />
+        </div>
       </section>
 
       <section className="surface-card p-6 animate-fade-rise">
@@ -234,7 +345,7 @@ export function SettingsPage() {
     <div className="flex flex-1 flex-col">
       <PageHeader
         title="Settings"
-        description="Scoring weights, niche definition, and integration status."
+        description="Scoring weights, rubrics, niche definition, and integration status."
       />
 
       <div className="max-w-2xl px-8 py-6">
@@ -247,7 +358,7 @@ export function SettingsPage() {
 
         {data && (
           <SettingsForm
-            key={`${data.niche.topics.join()}|${Object.values(data.weights).join(",")}|${data.llm.base_url}|${data.llm.model}|${data.llm.api_key_set}`}
+            key={`${data.niche.topics.join()}|${Object.values(data.weights).join(",")}|${data.llm.base_url}|${data.llm.model}|${data.llm.api_key_set}|${data.rubrics_available}|${data.scoring_rubrics.nurture.is_custom}|${data.scoring_rubrics.beta.is_custom}`}
             initial={data}
           />
         )}

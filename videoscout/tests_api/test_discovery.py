@@ -1,5 +1,6 @@
 """Tests for trend discovery API and worker (R7a)."""
 import uuid
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,13 +36,14 @@ def test_discovery_run_creates_job(client, db_session):
 
 
 def test_discovery_run_rejects_when_job_active(client, db_session):
-    db_session.add(
-        DiscoveryJobModel(
-            status="running",
-            job_type="trend_discovery",
-            keyword_type_filter="nurture",
-        )
+    active = DiscoveryJobModel(
+        id=uuid.uuid4(),
+        status="running",
+        job_type="trend_discovery",
+        keyword_type_filter="nurture",
+        started_at=datetime.utcnow(),
     )
+    db_session.add(active)
     db_session.commit()
 
     with patch("videoscout.api.discovery.run_trend_discovery_sync"):
@@ -51,6 +53,95 @@ def test_discovery_run_rejects_when_job_active(client, db_session):
         )
 
     assert resp.status_code == 409
+    err = resp.json()["error"]
+    assert err["details"]["active_job_id"] == str(active.id)
+
+
+def test_discovery_run_force_cancels_active_job(client, db_session):
+    active = DiscoveryJobModel(
+        id=uuid.uuid4(),
+        status="running",
+        job_type="trend_discovery",
+        keyword_type_filter="nurture",
+        started_at=datetime.utcnow(),
+    )
+    db_session.add(active)
+    db_session.commit()
+
+    with patch("videoscout.api.discovery.run_trend_discovery_sync"):
+        resp = client.post(
+            "/api/v1/discovery/run",
+            json={
+                "keyword_type_filter": "both",
+                "region_code": "DE",
+                "force": True,
+            },
+        )
+
+    assert resp.status_code == 200
+    db_session.refresh(active)
+    assert active.status == "failed"
+    assert active.error_message == "Cancelled to start a new discovery run."
+
+
+def test_cancel_discovery_job_marks_active_failed(client, db_session):
+    active = DiscoveryJobModel(
+        id=uuid.uuid4(),
+        status="running",
+        job_type="trend_discovery",
+        keyword_type_filter="nurture",
+        started_at=datetime.utcnow(),
+    )
+    db_session.add(active)
+    db_session.commit()
+
+    resp = client.post(f"/api/v1/discovery/jobs/{active.id}/cancel")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "failed"
+    assert data["error_message"] == "Cancelled by user."
+
+    db_session.refresh(active)
+    assert active.status == "failed"
+
+
+def test_cancel_discovery_job_rejects_terminal(client, db_session):
+    done = DiscoveryJobModel(
+        id=uuid.uuid4(),
+        status="completed",
+        job_type="trend_discovery",
+        keyword_type_filter="nurture",
+        completed_at=datetime.utcnow(),
+    )
+    db_session.add(done)
+    db_session.commit()
+
+    resp = client.post(f"/api/v1/discovery/jobs/{done.id}/cancel")
+    assert resp.status_code == 409
+
+
+def test_discovery_run_expires_stale_job(client, db_session):
+    from datetime import timedelta
+
+    stale = DiscoveryJobModel(
+        status="running",
+        job_type="trend_discovery",
+        keyword_type_filter="nurture",
+        started_at=datetime.utcnow() - timedelta(hours=2),
+        created_at=datetime.utcnow() - timedelta(hours=2),
+    )
+    db_session.add(stale)
+    db_session.commit()
+
+    with patch("videoscout.api.discovery.run_trend_discovery_sync"):
+        resp = client.post(
+            "/api/v1/discovery/run",
+            json={"keyword_type_filter": "both", "region_code": "DE"},
+        )
+
+    assert resp.status_code == 200
+    db_session.refresh(stale)
+    assert stale.status == "failed"
 
 
 def test_discovery_job_stream_emits_terminal_event(client, db_session):
@@ -158,6 +249,50 @@ def test_list_suggestions_filter_keyword_type(client, db_session):
     assert beta.status_code == 200
     assert beta.json()["total"] == 1
     assert beta.json()["items"][0]["keyword"] == "beta long tail keyword phrase"
+
+
+@pytest.mark.asyncio
+async def test_trend_discovery_worker_respects_cancelled_job(db_session, mock_trending):
+    from videoscout.workers.trend_discovery import run_trend_discovery
+
+    job = DiscoveryJobModel(
+        status="started",
+        job_type="trend_discovery",
+        keyword_type_filter="both",
+    )
+    db_session.add(job)
+    db_session.commit()
+    job_id = job.id
+
+    mock_yt = MagicMock()
+    mock_yt.get_trending_videos.return_value = mock_trending
+
+    async def fake_gate(keyword, gate_profile):
+        row = db_session.query(DiscoveryJobModel).filter(DiscoveryJobModel.id == job_id).first()
+        row.status = "failed"
+        row.error_message = "Cancelled to start a new discovery run."
+        row.completed_at = datetime.utcnow()
+        db_session.commit()
+        return {
+            "surface": True,
+            "tiktok_unverified": False,
+            "score": 0.6,
+            "tiktok_stats": {"saturation_tier": "moderate"},
+            "tiktok_status": "moderate",
+        }
+
+    with patch("videoscout.workers.trend_discovery.get_youtube_service", return_value=mock_yt), \
+         patch("videoscout.workers.trend_discovery.get_session", return_value=db_session), \
+         patch("videoscout.workers.trend_discovery.SuggestionEngine") as mock_engine_cls:
+        instance = mock_engine_cls.return_value
+        instance.check_tiktok_gate = AsyncMock(side_effect=fake_gate)
+        await run_trend_discovery(str(job_id), keyword_type_filter="both")
+
+    row = db_session.query(DiscoveryJobModel).filter(DiscoveryJobModel.id == job_id).first()
+    assert row is not None
+    assert row.status == "failed"
+    assert row.error_message == "Cancelled to start a new discovery run."
+    assert row.progress_phase != "complete"
 
 
 @pytest.mark.asyncio
@@ -295,3 +430,52 @@ async def test_tiktok_gate_blocks_beta_on_failure():
     nurture = await engine.check_tiktok_gate("test keyword", "light")
     assert nurture["surface"] is True
     assert nurture["tiktok_unverified"] is True
+
+
+def test_extract_keyword_candidates_nurture_width():
+    from videoscout.core_engine.trend_discovery import extract_keyword_candidates
+
+    title = "Small Business TikTok Marketing Tips 2026"
+    wide = extract_keyword_candidates(title, max_word_width=5)
+    narrow = extract_keyword_candidates(title, max_word_width=3)
+    assert any(len(p["keyword"].split()) >= 4 for p in wide)
+    assert all(len(p["keyword"].split()) <= 3 for p in narrow)
+    assert len(narrow) >= 1
+
+
+def test_upsert_reactivates_rejected_suggestion(db_session):
+    from videoscout.workers.trend_discovery import _upsert_scored_suggestion
+
+    db_session.add(
+        SuggestionModel(
+            keyword="viral dance trend",
+            final_score=0.3,
+            component_scores={},
+            suggested_by=[],
+            status="rejected",
+            reject_reason="off_topic",
+            keyword_type="nurture",
+            gate_profile="light",
+            tiktok_unverified=False,
+        )
+    )
+    db_session.commit()
+
+    scored = {
+        "keyword": "viral dance trend",
+        "final_score": 0.55,
+        "component_scores": {"relevance": 0.5},
+        "tiktok_status": "moderate",
+        "tiktok_count": 5,
+        "tiktok_stats": {},
+        "keyword_type": "nurture",
+        "discovery_source": "youtube_trend",
+        "trend_signals": {},
+        "gate_profile": "light",
+        "tiktok_unverified": False,
+    }
+    assert _upsert_scored_suggestion(db_session, scored) is True
+
+    row = db_session.query(SuggestionModel).filter_by(keyword="viral dance trend").one()
+    assert row.status == "pending"
+    assert row.reject_reason is None

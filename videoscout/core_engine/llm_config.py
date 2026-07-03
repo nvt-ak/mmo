@@ -10,6 +10,7 @@ from videoscout.db.models import SettingsModel
 DEFAULT_BASE_URL = "http://localhost:20128/v1"
 DEFAULT_API_KEY = "sk-local"
 DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 120.0
 
 
 def _env_config() -> dict:
@@ -73,12 +74,23 @@ def llm_api_key_configured(db: Optional[Session] = None) -> bool:
     return bool(os.getenv("LLM_API_KEY")) or config["api_key"] != DEFAULT_API_KEY
 
 
+def get_llm_request_timeout_seconds() -> float:
+    raw = os.getenv("LLM_REQUEST_TIMEOUT_SECONDS")
+    if raw is None or not raw.strip():
+        return DEFAULT_REQUEST_TIMEOUT_SECONDS
+    try:
+        return max(5.0, float(raw.strip()))
+    except ValueError:
+        return DEFAULT_REQUEST_TIMEOUT_SECONDS
+
+
 def _create_client_from_config(config: dict) -> OpenAI:
+    timeout_seconds = get_llm_request_timeout_seconds()
     try:
         import httpx
 
         httpx_client = httpx.Client(
-            timeout=30.0,
+            timeout=timeout_seconds,
             headers={"User-Agent": "VideoScout/1.0"},
         )
         return OpenAI(

@@ -13,6 +13,8 @@ from videoscout.core_engine.keyword_classifier import (
     classify_keyword_type,
 )
 from videoscout.core_engine.keyword_context import KeywordContextBuilder
+from videoscout.core_engine.platform_signals import build_platform_signals
+from videoscout.core_engine.scoring_rubric import resolve_scoring_rubric
 from videoscout.core_engine.llm_config import create_llm_client, get_llm_config
 from videoscout.db.models import PerformanceReportModel, SettingsModel, SuggestionModel
 
@@ -24,7 +26,7 @@ BLEND_LLM_WEIGHT = 0.6
 BLEND_HEURISTIC_WEIGHT = 0.4
 CALIBRATION_REPORT_THRESHOLD = 20
 LLM_TEMPERATURE = 0.25
-BATCH_MAX_SIZE = 25
+BATCH_MAX_SIZE = 10
 
 COMPONENT_KEYS = (
     "relevance",
@@ -131,16 +133,13 @@ def passes_beta_pre_rules(keyword: str, tiktok_gate: Dict[str, Any]) -> bool:
 def _build_batch_prompt(
     batch_items: List[Dict[str, Any]],
     weights: Dict[str, float],
+    settings: Optional[SettingsModel] = None,
 ) -> str:
     payload = {
         "candidates": batch_items,
         "weights": weights,
-        "rules_summary": (
-            "Score each beta TikTok keyword relative to others in this batch. "
-            "Prefer 3-5 word niche phrases with fresh-moderate TikTok saturation. "
-            "Saturation component inversely related to competition. "
-            "Use kb_context per keyword when present."
-        ),
+        "scoring_mode": "relative_batch",
+        "rubric": resolve_scoring_rubric("beta", settings),
     }
     return f"""Score ALL beta keyword candidates in this batch.
 
@@ -168,6 +167,11 @@ Return one entry per input keyword. Do not compute final_score.
 Batch payload:
 {json.dumps(payload, ensure_ascii=False)}
 """
+
+
+def _is_timeout_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "timeout" in msg or "timed out" in msg
 
 
 def _call_llm_json(*, llm: OpenAI, model: str, prompt: str) -> Dict[str, Any]:
@@ -237,9 +241,14 @@ def _finalize_beta_score(
         return None
 
     tier_to_status = {"fresh": "low", "moderate": "moderate", "saturated": "saturated"}
+    rationale = str(llm_payload.get("rationale") or "")
+    component_reasons = {
+        key: f"LLM scored {llm_components[key]:.0%} for {key.replace('_', ' ')}."
+        for key in COMPONENT_KEYS
+    }
     trend_signals = dict(candidate.get("trend_signals") or {})
     trend_signals["scoring"] = {
-        "rationale": str(llm_payload.get("rationale") or ""),
+        "rationale": rationale,
         "confidence": round(float(llm_payload.get("confidence") or 0.0), 3),
         "risk_flags": list(llm_payload.get("risk_flags") or []),
         "scored_with": "llm_beta_batch",
@@ -254,6 +263,16 @@ def _finalize_beta_score(
         "gate_profile": "full",
         "final_score": final_score,
         "component_scores": llm_components,
+        "platform_signals": build_platform_signals(
+            candidate=candidate,
+            tiktok_gate=tiktok_gate,
+            component_scores=llm_components,
+            component_reasons=component_reasons,
+            scored_with="llm_beta_batch",
+            rationale=rationale,
+            confidence=float(llm_payload.get("confidence") or 0.0),
+            risk_flags=list(llm_payload.get("risk_flags") or []),
+        ),
         "tiktok_status": tier_to_status.get(saturation_tier, "moderate"),
         "tiktok_count": tiktok_stats.get("video_count_7d", 0),
         "tiktok_stats": tiktok_stats,
@@ -297,6 +316,157 @@ def _prepare_batch_items(
     return batch_rows, lookup
 
 
+def _finalize_batch_scores(
+    scores: Any,
+    lookup: Dict[str, Dict[str, Any]],
+    *,
+    weights: Dict[str, float],
+    min_score: float,
+    keyword_type_filter: str,
+    linked_reports: int,
+) -> List[Dict[str, Any]]:
+    if not isinstance(scores, list):
+        logger.warning("Beta batch LLM returned invalid scores payload")
+        return []
+
+    results: List[Dict[str, Any]] = []
+    for row in scores:
+        if not isinstance(row, dict):
+            continue
+        keyword = str(row.get("keyword") or "").strip()
+        item = lookup.get(keyword.lower())
+        if not item:
+            continue
+        finalized = _finalize_beta_score(
+            item["candidate"],
+            tiktok_gate=item["tiktok_gate"],
+            llm_payload=row,
+            weights=weights,
+            min_score=min_score,
+            keyword_type_filter=keyword_type_filter,
+            linked_reports=linked_reports,
+        )
+        if finalized:
+            results.append(finalized)
+    return results
+
+
+def _score_beta_chunk(
+    chunk: List[Dict[str, Any]],
+    *,
+    db: Session,
+    llm: OpenAI,
+    model: str,
+    weights: Dict[str, float],
+    settings: Optional[SettingsModel],
+    min_score: float,
+    keyword_type_filter: str,
+    linked_reports: int,
+) -> List[Dict[str, Any]]:
+    batch_rows, lookup = _prepare_batch_items(chunk, db)
+    if not batch_rows:
+        return []
+
+    llm_response = _call_llm_json(
+        llm=llm,
+        model=model,
+        prompt=_build_batch_prompt(batch_rows, weights, settings),
+    )
+    return _finalize_batch_scores(
+        llm_response.get("scores") or [],
+        lookup,
+        weights=weights,
+        min_score=min_score,
+        keyword_type_filter=keyword_type_filter,
+        linked_reports=linked_reports,
+    )
+
+
+def _score_beta_chunk_resilient(
+    chunk: List[Dict[str, Any]],
+    *,
+    db: Session,
+    llm: OpenAI,
+    model: str,
+    weights: Dict[str, float],
+    settings: Optional[SettingsModel],
+    min_score: float,
+    keyword_type_filter: str,
+    linked_reports: int,
+) -> List[Dict[str, Any]]:
+    try:
+        return _score_beta_chunk(
+            chunk,
+            db=db,
+            llm=llm,
+            model=model,
+            weights=weights,
+            settings=settings,
+            min_score=min_score,
+            keyword_type_filter=keyword_type_filter,
+            linked_reports=linked_reports,
+        )
+    except BetaScoringError as exc:
+        if _is_timeout_error(exc) and len(chunk) > 1:
+            mid = len(chunk) // 2
+            return (
+                _score_beta_chunk_resilient(
+                    chunk[:mid],
+                    db=db,
+                    llm=llm,
+                    model=model,
+                    weights=weights,
+                    settings=settings,
+                    min_score=min_score,
+                    keyword_type_filter=keyword_type_filter,
+                    linked_reports=linked_reports,
+                )
+                + _score_beta_chunk_resilient(
+                    chunk[mid:],
+                    db=db,
+                    llm=llm,
+                    model=model,
+                    weights=weights,
+                    settings=settings,
+                    min_score=min_score,
+                    keyword_type_filter=keyword_type_filter,
+                    linked_reports=linked_reports,
+                )
+            )
+        logger.warning("Beta chunk scoring failed (%d items): %s", len(chunk), exc)
+        return []
+    except Exception as exc:
+        logger.error("Beta batch LLM scoring failed: %s", exc)
+        if _is_timeout_error(exc) and len(chunk) > 1:
+            mid = len(chunk) // 2
+            return (
+                _score_beta_chunk_resilient(
+                    chunk[:mid],
+                    db=db,
+                    llm=llm,
+                    model=model,
+                    weights=weights,
+                    settings=settings,
+                    min_score=min_score,
+                    keyword_type_filter=keyword_type_filter,
+                    linked_reports=linked_reports,
+                )
+                + _score_beta_chunk_resilient(
+                    chunk[mid:],
+                    db=db,
+                    llm=llm,
+                    model=model,
+                    weights=weights,
+                    settings=settings,
+                    min_score=min_score,
+                    keyword_type_filter=keyword_type_filter,
+                    linked_reports=linked_reports,
+                )
+            )
+        logger.warning("Beta chunk scoring failed (%d items): %s", len(chunk), exc)
+        return []
+
+
 async def score_beta_candidates_batch(
     items: List[Dict[str, Any]],
     *,
@@ -327,45 +497,19 @@ async def score_beta_candidates_batch(
 
     for start in range(0, len(items), BATCH_MAX_SIZE):
         chunk = items[start : start + BATCH_MAX_SIZE]
-        batch_rows, lookup = _prepare_batch_items(chunk, db)
-        if not batch_rows:
-            continue
-
-        try:
-            llm_response = _call_llm_json(
+        results.extend(
+            _score_beta_chunk_resilient(
+                chunk,
+                db=db,
                 llm=llm,
                 model=llm_config["model"],
-                prompt=_build_batch_prompt(batch_rows, weights),
-            )
-        except BetaScoringError:
-            raise
-        except Exception as exc:
-            logger.error("Beta batch LLM scoring failed: %s", exc)
-            raise BetaScoringError(str(exc)) from exc
-
-        scores = llm_response.get("scores") or []
-        if not isinstance(scores, list):
-            logger.warning("Beta batch LLM returned invalid scores payload")
-            continue
-
-        for row in scores:
-            if not isinstance(row, dict):
-                continue
-            keyword = str(row.get("keyword") or "").strip()
-            item = lookup.get(keyword.lower())
-            if not item:
-                continue
-            finalized = _finalize_beta_score(
-                item["candidate"],
-                tiktok_gate=item["tiktok_gate"],
-                llm_payload=row,
                 weights=weights,
+                settings=settings,
                 min_score=min_score,
                 keyword_type_filter=keyword_type_filter,
                 linked_reports=linked_reports,
             )
-            if finalized:
-                results.append(finalized)
+        )
 
     return results
 

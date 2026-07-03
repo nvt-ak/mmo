@@ -79,13 +79,26 @@ app.add_middleware(
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
+    if isinstance(exc.detail, dict):
+        message = exc.detail.get("message", str(exc.detail))
+        code = exc.detail.get("code", "UNKNOWN_ERROR")
+        details = {
+            key: value
+            for key, value in exc.detail.items()
+            if key not in ("message", "code")
+        } or None
+    else:
+        message = str(exc.detail)
+        code = exc.detail if isinstance(exc.detail, str) else "UNKNOWN_ERROR"
+        details = None
+
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "error": {
-                "code": exc.detail if isinstance(exc.detail, str) else exc.detail.get("code", "UNKNOWN_ERROR"),
-                "message": str(exc.detail),
-                "details": None,
+                "code": code,
+                "message": message,
+                "details": details,
                 "timestamp": datetime.utcnow().isoformat()
             }
         }

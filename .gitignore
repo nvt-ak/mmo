@@ -29,3 +29,4 @@ videoscout.db-shm
 videoscout.db-wal
 
 graphify-out/
+data/

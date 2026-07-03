@@ -108,3 +108,46 @@ def test_update_settings_llm_api_key_unchanged_when_omitted(client, db_session):
 
     db_session.refresh(settings)
     assert settings.llm_api_key == "sk-existing"
+
+
+def test_get_settings_includes_scoring_rubrics(client):
+    resp = client.get("/api/v1/settings")
+    assert resp.status_code == 200
+    rubrics = resp.json()["scoring_rubrics"]
+    assert rubrics["nurture"]["text"]
+    assert rubrics["nurture"]["default_text"]
+    assert rubrics["nurture"]["is_custom"] is False
+    assert rubrics["beta"]["text"]
+    assert rubrics["beta"]["is_custom"] is False
+
+
+def test_update_settings_scoring_rubric_override(client, db_session):
+    from videoscout.core_engine.scoring_rubric import default_rubric_text
+    from videoscout.db.models import SettingsModel
+
+    custom = "Custom nurture rubric for testing.\n\nScore relatively."
+    client.put("/api/v1/settings", json={"scoring_rubrics": {"nurture": custom}})
+    resp = client.get("/api/v1/settings")
+    data = resp.json()
+    assert data["scoring_rubrics"]["nurture"]["is_custom"] is True
+    assert data["scoring_rubrics"]["nurture"]["text"] == custom
+
+    settings = db_session.query(SettingsModel).first()
+    assert settings.nurture_scoring_rubric == custom
+
+
+def test_update_settings_scoring_rubric_reset_to_default(client, db_session):
+    from videoscout.core_engine.scoring_rubric import default_rubric_text
+    from videoscout.db.models import SettingsModel
+
+    default = default_rubric_text("nurture")
+    settings = SettingsModel(nurture_scoring_rubric="Temporary override")
+    db_session.add(settings)
+    db_session.commit()
+
+    client.put("/api/v1/settings", json={"scoring_rubrics": {"nurture": default}})
+    db_session.refresh(settings)
+    assert settings.nurture_scoring_rubric is None
+
+    resp = client.get("/api/v1/settings")
+    assert resp.json()["scoring_rubrics"]["nurture"]["is_custom"] is False

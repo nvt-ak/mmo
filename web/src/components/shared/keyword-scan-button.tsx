@@ -1,9 +1,10 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { api } from "@/lib/api/client";
+import { api, ApiError } from "@/lib/api/client";
 import { useDiscoveryJob } from "@/hooks/use-discovery-job";
 import { DiscoveryProgressBar } from "@/components/shared/discovery-progress-bar";
+import { isDiscoveryJobStale } from "@/lib/discovery/stale-job";
 import type { KeywordTypeFilter } from "@/lib/api/types";
 
 interface KeywordScanButtonProps {
@@ -13,6 +14,8 @@ interface KeywordScanButtonProps {
   showStatus?: boolean;
   variant?: "primary" | "secondary";
 }
+
+type ScanMutationInput = { force?: boolean } | undefined;
 
 export function KeywordScanButton({
   label = "Run trend discovery",
@@ -25,10 +28,23 @@ export function KeywordScanButton({
     useDiscoveryJob({ onComplete });
 
   const scanMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input?: ScanMutationInput) => {
+      const force = input?.force ?? false;
       clearStreamError();
-      const { job_id } = await api.runDiscovery(keywordTypeFilter);
-      return job_id;
+      try {
+        const { job_id } = await api.runDiscovery(keywordTypeFilter, force);
+        return job_id;
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409 && err.activeJobId && !force) {
+          const activeJob = await api.getDiscoveryJob(err.activeJobId);
+          if (isDiscoveryJobStale(activeJob)) {
+            const { job_id } = await api.runDiscovery(keywordTypeFilter, true);
+            return job_id;
+          }
+          return err.activeJobId;
+        }
+        throw err;
+      }
     },
     onSuccess: (jobId) => {
       attachToJob(jobId, true);
@@ -43,10 +59,20 @@ export function KeywordScanButton({
 
   return (
     <div className="flex w-full min-w-[260px] max-w-sm flex-col items-stretch gap-2.5">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {showStatus && isTracking && (
+          <button
+            type="button"
+            onClick={() => scanMutation.mutate({ force: true })}
+            disabled={scanMutation.isPending}
+            className="btn btn-secondary text-xs"
+          >
+            Start over
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => scanMutation.mutate()}
+          onClick={() => scanMutation.mutate(undefined)}
           disabled={busy}
           className={btnClass}
         >
@@ -61,10 +87,9 @@ export function KeywordScanButton({
       )}
       {showStatus && !busy && progress?.status === "completed" && !errorMessage && (
         <p className="text-right text-xs text-(--muted)">
-          {progress.progress_label}
           {progress.keywords_generated > 0
-            ? ` — ${progress.keywords_generated} keyword${progress.keywords_generated === 1 ? "" : "s"}`
-            : ""}
+            ? `Discovery complete — ${progress.keywords_generated} keyword${progress.keywords_generated === 1 ? "" : "s"}`
+            : "Discovery complete — 0 keywords saved (TikTok gate blocked or no matches for this track)"}
         </p>
       )}
     </div>

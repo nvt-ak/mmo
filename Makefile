@@ -47,13 +47,23 @@ migrate:
 stop-apps:
 	@if [ -f "$(API_PID)" ]; then kill $$(cat "$(API_PID)") 2>/dev/null || true; rm -f "$(API_PID)"; fi
 	@if [ -f "$(WEB_PID)" ]; then kill $$(cat "$(WEB_PID)") 2>/dev/null || true; rm -f "$(WEB_PID)"; fi
+	@for port in 8000 3000; do \
+		pids=$$(lsof -ti tcp:$$port -sTCP:LISTEN 2>/dev/null || true); \
+		if [ -n "$$pids" ]; then \
+			echo "Stopping process(es) on port $$port: $$pids"; \
+			kill $$pids 2>/dev/null || true; \
+			sleep 0.5; \
+			pids=$$(lsof -ti tcp:$$port -sTCP:LISTEN 2>/dev/null || true); \
+			[ -z "$$pids" ] || kill -9 $$pids 2>/dev/null || true; \
+		fi; \
+	done
 
 logs:
 	cd $(ROOT_DIR) && $(DOCKER_COMPOSE) logs -f postgres
 
 down: stop-apps db-down
 
-up: db-up wait-db migrate
+up: stop-apps db-up wait-db migrate
 	@mkdir -p "$(RUN_DIR)"
 	@echo "VideoScout running — API http://localhost:8000  Web http://localhost:3000"
 	@echo "Press Ctrl+C to stop API and Web (Postgres keeps running; use 'make down' to stop all)"
@@ -67,3 +77,6 @@ up: db-up wait-db migrate
 	cd "$(ROOT_DIR)/web" && $(NPM) run dev & \
 	echo $$! > "$(WEB_PID)"; \
 	wait
+
+reset: stop-apps
+	cd $(ROOT_DIR) && $(DOCKER_COMPOSE) down -v --remove-orphans

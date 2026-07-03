@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, Fragment } from "react";
 import { api } from "@/lib/api/client";
 import type { RejectReason, Suggestion, SuggestionStatus, KeywordType, KeywordTypeFilter } from "@/lib/api/types";
 import { ActionBar } from "@/components/shared/action-bar";
@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ScoreBadge } from "@/components/shared/score-badge";
 import { KeywordScanButton } from "@/components/shared/keyword-scan-button";
 import { TabBar } from "@/components/shared/tab-bar";
+import { SuggestionInsightPanel } from "./suggestion-insight-panel";
 import { RejectModal } from "./reject-modal";
 import { ReportDialog } from "./report-dialog";
 
@@ -39,6 +40,7 @@ export function InboxPage({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<Suggestion | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const queryKey = ["suggestions", keywordType, status, search];
 
@@ -217,9 +219,11 @@ export function InboxPage({
                 </tr>
               </thead>
               <tbody>
-                {items.map((item, index) => (
+                {items.map((item, index) => {
+                  const expanded = expandedId === item.id;
+                  return (
+                  <Fragment key={item.id}>
                   <tr
-                    key={item.id}
                     className="stagger-item border-b border-(--border-subtle) last:border-b-0 hover:bg-(--surface-muted)/60"
                     style={{ ["--stagger-index" as string]: index }}
                   >
@@ -257,6 +261,15 @@ export function InboxPage({
                       {new Date(item.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedId((prev) => (prev === item.id ? null : item.id))
+                        }
+                        className="btn btn-ghost px-2 py-1 text-(--muted)"
+                      >
+                        {expanded ? "Hide" : "Insights"}
+                      </button>
                       {status === "approved" && (
                         <button
                           type="button"
@@ -278,7 +291,19 @@ export function InboxPage({
                       )}
                     </td>
                   </tr>
-                ))}
+                  {expanded && (
+                    <tr key={`${item.id}-insights`} className="border-b border-(--border-subtle)">
+                      <td
+                        colSpan={status === "pending" ? 6 : 5}
+                        className="p-0"
+                      >
+                        <SuggestionInsightPanel suggestion={item} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

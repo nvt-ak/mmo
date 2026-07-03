@@ -1,5 +1,7 @@
 """TikTok scoring enrichment tests for US-011 / US-053."""
+import asyncio
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,10 +16,66 @@ def clear_tiktok_cache():
     tiktok_module._tiktok_cache.clear()
     tiktok_module._error_cache.clear()
     tiktok_module._batch_session = None
+    tiktok_module._reset_search_pacing()
     yield
     tiktok_module._tiktok_cache.clear()
     tiktok_module._error_cache.clear()
     tiktok_module._batch_session = None
+    tiktok_module._reset_search_pacing()
+
+
+def test_search_page_url_encodes_query():
+    url = tiktok_module._search_page_url("ảnh avatar")
+    assert url.startswith("https://www.tiktok.com/search?q=")
+    assert "t=" in url
+    assert "%" in url.split("q=", 1)[1]
+
+
+def test_search_api_params_match_tiktok_api():
+    params = tiktok_module._search_api_params("test keyword", limit=20)
+    assert params["from_page"] == "search"
+    assert params["keyword"] == "test keyword"
+    assert params["count"] == 20
+    assert params["offset"] == 0
+    assert params["search_source"] == "recom_search"
+    assert params["is_non_personalized_search"] == 0
+    assert "web_search_code" in params
+
+
+def test_extract_raw_search_items_general_payload():
+    now_ts = int(datetime.utcnow().timestamp())
+    payload = {
+        "data": [
+            {"type": 4, "user_info": {"unique_id": "someuser"}},
+            {
+                "type": 1,
+                "item": {
+                    "createTime": now_ts,
+                    "stats": {
+                        "playCount": 100,
+                        "diggCount": 10,
+                        "commentCount": 1,
+                        "shareCount": 0,
+                    },
+                },
+            },
+        ],
+    }
+    items = tiktok_module._extract_raw_search_items(payload)
+    assert len(items) == 1
+    parsed = tiktok_module._parse_search_payload(payload, limit=10)
+    assert parsed[0]["view_count"] == 100
+
+
+def test_extract_raw_search_items_item_list_payload():
+    now_ts = int(datetime.utcnow().timestamp())
+    payload = {
+        "item_list": [{
+            "createTime": now_ts,
+            "stats": {"playCount": 42, "diggCount": 4, "commentCount": 1, "shareCount": 0},
+        }],
+    }
+    assert len(tiktok_module._extract_raw_search_items(payload)) == 1
 
 
 def test_tiktok_service_computes_avg_likes_and_comments():
@@ -60,15 +118,15 @@ def test_tiktok_service_handles_null_json_body():
 @pytest.mark.asyncio
 async def test_score_keywords_includes_tiktok_stats():
     engine = SuggestionEngine(llm_client=MagicMock(), db_session=MagicMock())
-    engine.tiktok = AsyncMock()
-    engine.tiktok.search_videos.return_value = {
+    engine.tiktok = MagicMock()
+    engine.tiktok.search_videos_async = AsyncMock(return_value={
         "total_count": 15,
         "avg_views": 12000.0,
         "videos": [
             {"view_count": 10000, "like_count": 500, "comment_count": 30},
             {"view_count": 14000, "like_count": 700, "comment_count": 50},
         ],
-    }
+    })
 
     candidates = [
         {
@@ -106,10 +164,45 @@ async def test_score_keywords_includes_tiktok_stats():
 
 
 def test_tiktok_service_no_ms_token_returns_error():
-    with patch.object(tiktok_module, "_get_ms_token", return_value=None):
+    with patch.object(tiktok_module, "get_ms_tokens", return_value=[]):
         result = TikTokService().search_videos("test keyword")
     assert result["total_count"] == 0
     assert result["error"] == "no_ms_token"
+
+
+def test_get_ms_tokens_merges_env_and_dedupes(monkeypatch):
+    monkeypatch.setenv("TIKTOK_MS_TOKEN", "token-a")
+    monkeypatch.setenv("TIKTOK_MS_TOKENS", "token-b,token-a")
+    monkeypatch.delenv("TIKTOK_MS_TOKEN_FILE", raising=False)
+    with patch.object(tiktok_module, "DEFAULT_MS_TOKEN_FILE", Path("/nonexistent/ms_tokens.txt")):
+        assert tiktok_module.get_ms_tokens() == ["token-a", "token-b"]
+
+
+def test_get_proxies_builds_playwright_dict(monkeypatch):
+    monkeypatch.setenv("TIKTOK_PROXY", "http://user:pass@proxy.example:8080")
+    proxies = tiktok_module.get_proxies()
+    assert proxies == [{
+        "server": "http://proxy.example:8080",
+        "username": "user",
+        "password": "pass",
+    }]
+
+
+@pytest.mark.asyncio
+async def test_create_api_sessions_passes_pool_config(monkeypatch):
+    monkeypatch.setenv("TIKTOK_BROWSER", "webkit")
+    monkeypatch.setenv("TIKTOK_NUM_SESSIONS", "2")
+    api = AsyncMock()
+    await tiktok_module._create_api_sessions(
+        api,
+        ms_tokens=["token-a", "token-b", "token-c"],
+    )
+    api.create_sessions.assert_awaited_once()
+    kwargs = api.create_sessions.await_args.kwargs
+    assert kwargs["browser"] == "webkit"
+    assert kwargs["headless"] is False
+    assert kwargs["num_sessions"] == 2
+    assert kwargs["ms_tokens"] == ["token-a", "token-b", "token-c"]
 
 
 @pytest.mark.asyncio
@@ -137,9 +230,9 @@ async def test_tiktok_service_search_via_mstoken():
         },
     ]
 
-    async def fake_fetch(keyword, ms_token, *, limit):
+    async def fake_fetch(keyword, ms_tokens, *, limit, proxies=None):
         assert keyword == "ai tips"
-        assert ms_token == "test-token"
+        assert ms_tokens == ["test-token"]
         return [tiktok_module._parse_search_item(item) for item in mock_items]
 
     with patch.object(tiktok_module, "_fetch_search_videos", side_effect=fake_fetch):
@@ -155,17 +248,21 @@ def test_tiktok_service_batch_reuses_fetcher():
     service = TikTokService(ms_token="test-token")
     calls = {"count": 0}
 
-    async def fake_batch(keyword, ms_token, *, limit):
+    async def fake_batch(keyword, ms_tokens, *, limit, proxies=None):
         calls["count"] += 1
         return [{"view_count": 10, "like_count": 1, "comment_count": 0, "share_count": 0, "created_at": ""}]
 
-    with patch.object(tiktok_module, "_fetch_search_videos_batch", side_effect=fake_batch):
-        service.start_batch()
-        try:
-            first = service.search_videos("alpha keyword")
-            second = service.search_videos("beta keyword phrase")
-        finally:
-            service.end_batch()
+    async def run_batch():
+        with patch.object(tiktok_module, "_fetch_search_videos_batch", side_effect=fake_batch):
+            service.start_batch()
+            try:
+                first = await service.search_videos_async("alpha keyword")
+                second = await service.search_videos_async("beta keyword phrase")
+            finally:
+                await service.end_batch_async()
+        return first, second
+
+    first, second = asyncio.run(run_batch())
 
     assert calls["count"] == 2
     assert first["total_count"] == 1
@@ -176,7 +273,7 @@ def test_tiktok_service_caches_search_errors():
     service = TikTokService(ms_token="test-token")
     calls = {"n": 0}
 
-    async def boom(keyword, ms_token, *, limit):
+    async def boom(keyword, ms_tokens, *, limit, proxies=None):
         calls["n"] += 1
         raise TimeoutError("timeout")
 
@@ -186,4 +283,100 @@ def test_tiktok_service_caches_search_errors():
 
     assert first["error"] == "timeout"
     assert second["error"] == "timeout"
-    assert calls["n"] == 1
+    assert calls["n"] == 3
+
+
+@pytest.mark.asyncio
+async def test_tiktok_service_retries_with_next_token():
+    service = TikTokService(ms_tokens=["bad-token", "good-token"])
+    calls = {"n": 0}
+
+    async def fake_fetch(keyword, ms_tokens, *, limit, proxies=None):
+        calls["n"] += 1
+        if ms_tokens[0] == "bad-token":
+            raise RuntimeError("blocked")
+        return [{"view_count": 5, "like_count": 1, "comment_count": 0, "share_count": 0, "created_at": ""}]
+
+    with patch.object(tiktok_module, "_fetch_search_videos", side_effect=fake_fetch):
+        result = await service.search_videos_async("retry keyword phrase")
+
+    assert result["total_count"] == 1
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_tiktok_service_retries_single_token(monkeypatch):
+    monkeypatch.setenv("TIKTOK_SEARCH_RETRIES", "3")
+    service = TikTokService(ms_token="solo-token")
+    calls = {"n": 0}
+
+    async def fake_fetch(keyword, ms_tokens, *, limit, proxies=None):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RuntimeError("bot blocked")
+        return [{"view_count": 5, "like_count": 1, "comment_count": 0, "share_count": 0, "created_at": ""}]
+
+    with patch.object(tiktok_module, "_fetch_search_videos", side_effect=fake_fetch):
+        result = await service.search_videos_async("retry solo keyword")
+
+    assert result["total_count"] == 1
+    assert calls["n"] == 3
+
+
+def test_target_pre_search_delay_includes_typing(monkeypatch):
+    monkeypatch.setenv("TIKTOK_SEARCH_INTERVAL_MIN_SECONDS", "8")
+    monkeypatch.setenv("TIKTOK_SEARCH_INTERVAL_MAX_SECONDS", "10")
+    monkeypatch.setenv("TIKTOK_SEARCH_TYPING_SECONDS_PER_CHAR", "0.1")
+    with patch("videoscout.services.tiktok.random.uniform", return_value=9.0):
+        delay = tiktok_module._target_pre_search_delay("abcd")
+    assert delay == pytest.approx(9.4)
+
+
+@pytest.mark.asyncio
+async def test_pace_before_search_waits_when_too_soon(monkeypatch):
+    monkeypatch.setenv("TIKTOK_SEARCH_PACING", "true")
+    monkeypatch.setenv("TIKTOK_SEARCH_INTERVAL_MIN_SECONDS", "10")
+    monkeypatch.setenv("TIKTOK_SEARCH_INTERVAL_MAX_SECONDS", "10")
+    monkeypatch.setenv("TIKTOK_SEARCH_TYPING_SECONDS_PER_CHAR", "0")
+    tiktok_module._mark_search_paced()
+    sleeps: list[float] = []
+
+    async def record_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    with patch("videoscout.services.tiktok.random.uniform", return_value=10.0):
+        with patch("videoscout.services.tiktok.asyncio.sleep", side_effect=record_sleep):
+            await tiktok_module._pace_before_search("test keyword")
+
+    assert len(sleeps) == 1
+    assert sleeps[0] > 0
+
+
+@pytest.mark.asyncio
+async def test_pace_before_search_skipped_when_disabled(monkeypatch):
+    monkeypatch.setenv("TIKTOK_SEARCH_PACING", "false")
+    with patch("videoscout.services.tiktok.asyncio.sleep", new_callable=AsyncMock) as sleep_mock:
+        await tiktok_module._pace_before_search("test keyword")
+    sleep_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_search_videos_async_paces_uncached_requests(monkeypatch):
+    monkeypatch.setenv("TIKTOK_SEARCH_PACING", "true")
+    monkeypatch.setenv("TIKTOK_SEARCH_INITIAL_DELAY_MIN_SECONDS", "0")
+    monkeypatch.setenv("TIKTOK_SEARCH_INITIAL_DELAY_MAX_SECONDS", "0")
+    monkeypatch.setenv("TIKTOK_SEARCH_POST_DWELL_MIN_SECONDS", "0")
+    monkeypatch.setenv("TIKTOK_SEARCH_POST_DWELL_MAX_SECONDS", "0")
+    service = TikTokService(ms_token="test-token")
+    pace_calls: list[str] = []
+
+    async def fake_pace(keyword: str) -> None:
+        pace_calls.append(keyword)
+
+    async def fake_fetch(keyword, ms_tokens, *, limit, proxies=None):
+        return [{"view_count": 1, "like_count": 0, "comment_count": 0, "share_count": 0, "created_at": ""}]
+
+    with patch.object(tiktok_module, "_pace_before_search", side_effect=fake_pace):
+        with patch.object(tiktok_module, "_fetch_search_videos", side_effect=fake_fetch):
+            await service.search_videos_async("paced keyword")
+    assert pace_calls == ["paced keyword"]

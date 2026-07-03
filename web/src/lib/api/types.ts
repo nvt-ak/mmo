@@ -8,6 +8,37 @@ export interface ComponentScores {
   video_performance: number;
 }
 
+export interface PlatformAgentSignals {
+  scored_with?: string;
+  rationale?: string;
+  confidence?: number;
+  risk_flags?: string[];
+  component_scores?: ComponentScores;
+  component_reasons?: Record<string, string>;
+}
+
+export interface PlatformSignals {
+  tiktok?: {
+    status?: string;
+    unverified?: boolean;
+    gate_score?: number;
+    stats?: {
+      video_count_7d: number;
+      avg_views: number;
+      avg_likes: number;
+      avg_comments: number;
+      saturation_tier?: string;
+    };
+  };
+  youtube?: {
+    discovery_source?: string;
+    source_title?: string;
+    video_id?: string;
+    channel_id?: string;
+  };
+  agent?: PlatformAgentSignals;
+}
+
 export type KeywordType = "nurture" | "beta";
 
 export interface Suggestion {
@@ -20,6 +51,7 @@ export interface Suggestion {
   tiktok_unverified?: boolean;
   final_score: number;
   component_scores: ComponentScores;
+  platform_signals?: PlatformSignals;
   suggested_by: Array<{
     source: string;
     video_id?: string;
@@ -71,6 +103,18 @@ export interface ScoringWeights {
   video_performance: number;
 }
 
+export interface ScoringRubricField {
+  text: string;
+  custom_text: string | null;
+  default_text: string;
+  is_custom: boolean;
+}
+
+export interface ScoringRubricsConfig {
+  nurture: ScoringRubricField;
+  beta: ScoringRubricField;
+}
+
 export interface SettingsResponse {
   weights: ScoringWeights;
   filters: Record<string, number>;
@@ -81,6 +125,9 @@ export interface SettingsResponse {
   };
   llm: { model: string; temperature: number; base_url: string; api_key_set: boolean };
   tiktok: { api_key_set: boolean; check_enabled: boolean };
+  scoring_rubrics: ScoringRubricsConfig;
+  /** False when API response omits rubrics (old server or pending restart). */
+  rubrics_available?: boolean;
 }
 
 export interface UpdateSettingsPayload {
@@ -98,6 +145,10 @@ export interface UpdateSettingsPayload {
     api_key?: string;
   };
   tiktok?: { check_enabled?: boolean };
+  scoring_rubrics?: {
+    nurture?: string | null;
+    beta?: string | null;
+  };
 }
 
 export interface LLMModelsResponse {

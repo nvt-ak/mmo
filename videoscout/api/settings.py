@@ -10,10 +10,16 @@ from videoscout.db.models import SettingsModel
 from videoscout.schemas import (
     SettingsResponse, UpdateSettingsRequest,
     ScoringWeights, NicheDefinition, LLMConfig, TikTokConfig,
+    ScoringRubricsConfig, ScoringRubricField,
     LLMModelsRequest, LLMModelsResponse,
 )
 from videoscout.core_engine.llm_config import (
     get_llm_config, llm_api_key_configured, list_llm_models,
+)
+from videoscout.core_engine.scoring_rubric import (
+    build_rubric_field,
+    default_rubric_text,
+    normalize_rubric_override,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,7 +71,11 @@ async def get_settings(db: Session = Depends(get_db)):
         tiktok=TikTokConfig(
             api_key_set=bool(s.tiktok_api_key or os.getenv("TIKTOK_MS_TOKEN", "").strip()),
             check_enabled=s.tiktok_check_enabled
-        )
+        ),
+        scoring_rubrics=ScoringRubricsConfig(
+            nurture=ScoringRubricField(**build_rubric_field("nurture", s)),
+            beta=ScoringRubricField(**build_rubric_field("beta", s)),
+        ),
     )
 
 
@@ -138,6 +148,19 @@ async def update_settings(
         if payload.tiktok.check_enabled is not None:
             s.tiktok_check_enabled = payload.tiktok.check_enabled
         # Don't update api_key_set (read-only field)
+
+    if payload.scoring_rubrics:
+        rubrics = payload.scoring_rubrics
+        if rubrics.nurture is not None:
+            s.nurture_scoring_rubric = normalize_rubric_override(
+                rubrics.nurture,
+                default_rubric_text("nurture"),
+            )
+        if rubrics.beta is not None:
+            s.beta_scoring_rubric = normalize_rubric_override(
+                rubrics.beta,
+                default_rubric_text("beta"),
+            )
     
     s.updated_at = datetime.utcnow()
     db.commit()

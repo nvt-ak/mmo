@@ -13,14 +13,9 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from videoscout.core_engine.engine import SuggestionEngine
 from videoscout.core_engine.keyword_classifier import classify_keyword_type
-from videoscout.core_engine.keyword_scorer import (
-    BetaScoringError,
-    score_beta_candidates_batch,
-)
-from videoscout.core_engine.trend_discovery import (
-    build_scored_candidate,
-    extract_keyword_candidates,
-)
+from videoscout.core_engine.keyword_scorer import score_beta_candidates_batch
+from videoscout.core_engine.nurture_scorer import score_nurture_candidates_batch
+from videoscout.core_engine.trend_discovery import extract_keyword_candidates
 from videoscout.db import get_session
 from videoscout.db.models import DiscoveryJobModel, SuggestionModel
 from videoscout.services.youtube import get_youtube_service
@@ -35,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def _upsert_scored_suggestion(db: Session, scored: Dict[str, Any]) -> bool:
-    """Insert or update suggestion. Returns True when a new row was created."""
+    """Insert or update suggestion. Returns True when inbox should count this keyword."""
     existing = db.query(SuggestionModel).filter(
         SuggestionModel.keyword == scored["keyword"]
     ).first()
@@ -48,7 +43,13 @@ def _upsert_scored_suggestion(db: Session, scored: Dict[str, Any]) -> bool:
         })
         existing.suggested_by = sources
         flag_modified(existing, "suggested_by")
-        if scored["final_score"] > existing.final_score:
+        reactivated = existing.status != "pending"
+        if reactivated:
+            existing.status = "pending"
+            existing.reject_reason = None
+            existing.reject_note = None
+            existing.rejected_at = None
+        if scored["final_score"] > existing.final_score or reactivated:
             existing.final_score = scored["final_score"]
             existing.component_scores = scored["component_scores"]
             existing.tiktok_status = scored["tiktok_status"]
@@ -58,10 +59,11 @@ def _upsert_scored_suggestion(db: Session, scored: Dict[str, Any]) -> bool:
             existing.keyword_type = scored["keyword_type"]
             existing.discovery_source = scored["discovery_source"]
             existing.trend_signals = scored["trend_signals"]
+            existing.platform_signals = scored.get("platform_signals")
             existing.gate_profile = scored["gate_profile"]
             existing.tiktok_unverified = scored["tiktok_unverified"]
         db.commit()
-        return False
+        return reactivated
 
     suggestion = SuggestionModel(
         keyword=scored["keyword"],
@@ -80,6 +82,7 @@ def _upsert_scored_suggestion(db: Session, scored: Dict[str, Any]) -> bool:
         keyword_type=scored["keyword_type"],
         discovery_source=scored["discovery_source"],
         trend_signals=scored["trend_signals"],
+        platform_signals=scored.get("platform_signals"),
         gate_profile=scored["gate_profile"],
         tiktok_unverified=scored["tiktok_unverified"],
         created_at=datetime.utcnow(),
@@ -113,6 +116,11 @@ def _commit_job_progress(db: Session, job: DiscoveryJobModel, **fields: object) 
     for key, value in fields.items():
         setattr(job, key, value)
     db.commit()
+
+
+def _job_was_cancelled(db: Session, job: DiscoveryJobModel) -> bool:
+    db.refresh(job)
+    return job.status == "failed"
 
 
 async def run_trend_discovery(
@@ -157,11 +165,16 @@ async def run_trend_discovery(
 
         seen: set[str] = set()
         beta_queue: List[Dict[str, Any]] = []
+        nurture_queue: List[Dict[str, Any]] = []
+        max_word_width = 3 if keyword_type_filter == "nurture" else 5
 
         for video_index, video in enumerate(trending):
             if keywords_generated >= MAX_KEYWORDS_PER_JOB:
                 break
-            for candidate in extract_keyword_candidates(video["title"]):
+            for candidate in extract_keyword_candidates(
+                video["title"],
+                max_word_width=max_word_width,
+            ):
                 if keywords_generated >= MAX_KEYWORDS_PER_JOB:
                     break
                 keyword = candidate["keyword"].lower()
@@ -169,13 +182,22 @@ async def run_trend_discovery(
                     continue
                 seen.add(keyword)
 
+                enriched_candidate = {
+                    **candidate,
+                    "trend_signals": {
+                        **(candidate.get("trend_signals") or {}),
+                        "video_id": video.get("id"),
+                        "channel_id": video.get("channel_id"),
+                    },
+                }
+
                 provisional_type = classify_keyword_type(
-                    candidate["keyword"],
-                    trend_source=candidate.get("discovery_source", "youtube_trend"),
+                    enriched_candidate["keyword"],
+                    trend_source=enriched_candidate.get("discovery_source", "youtube_trend"),
                 )
                 gate_profile = "light" if provisional_type == "nurture" else "full"
                 tiktok_gate = await engine.check_tiktok_gate(
-                    candidate["keyword"],
+                    enriched_candidate["keyword"],
                     gate_profile,
                 )
                 job.candidates_checked = (job.candidates_checked or 0) + 1
@@ -184,48 +206,84 @@ async def run_trend_discovery(
                 if provisional_type == "beta":
                     if keyword_type_filter != "nurture":
                         beta_queue.append({
-                            "candidate": candidate,
+                            "candidate": enriched_candidate,
                             "tiktok_gate": tiktok_gate,
                         })
                     continue
 
-                scored = build_scored_candidate(
-                    candidate,
-                    tiktok_gate=tiktok_gate,
-                    keyword_type_filter=keyword_type_filter,
-                )
-                if scored:
-                    keywords_generated = _save_keyword_if_new(
-                        db, job, scored, keywords_generated,
-                    )
+                nurture_queue.append({
+                    "candidate": enriched_candidate,
+                    "tiktok_gate": tiktok_gate,
+                })
 
             _commit_job_progress(db, job, videos_scanned=video_index + 1)
 
+        if (
+            nurture_queue
+            and keyword_type_filter != "beta"
+            and keywords_generated < MAX_KEYWORDS_PER_JOB
+        ):
+            if _job_was_cancelled(db, job):
+                logger.info("Discovery job %s cancelled before nurture scoring", job_id)
+                return
+            _commit_job_progress(db, job, progress_phase="score_nurture")
+            nurture_scored = await score_nurture_candidates_batch(
+                nurture_queue,
+                db=db,
+                keyword_type_filter=keyword_type_filter,
+            )
+            for scored in nurture_scored:
+                if keywords_generated >= MAX_KEYWORDS_PER_JOB:
+                    break
+                keywords_generated = _save_keyword_if_new(
+                    db, job, scored, keywords_generated,
+                )
+
+        beta_scored: List[Dict[str, Any]] = []
         if (
             beta_queue
             and keyword_type_filter != "nurture"
             and keywords_generated < MAX_KEYWORDS_PER_JOB
         ):
+            if _job_was_cancelled(db, job):
+                logger.info("Discovery job %s cancelled before beta scoring", job_id)
+                return
             _commit_job_progress(db, job, progress_phase="score_beta")
-            try:
-                beta_scored = await score_beta_candidates_batch(
-                    beta_queue,
-                    db=db,
-                    keyword_type_filter=keyword_type_filter,
-                )
-            except BetaScoringError as exc:
-                logger.warning(
-                    "Beta batch scoring failed for job %s: %s",
-                    job_id,
-                    exc,
-                )
-                beta_scored = []
+            beta_scored = await score_beta_candidates_batch(
+                beta_queue,
+                db=db,
+                keyword_type_filter=keyword_type_filter,
+            )
             for scored in beta_scored:
                 if keywords_generated >= MAX_KEYWORDS_PER_JOB:
                     break
                 keywords_generated = _save_keyword_if_new(
                     db, job, scored, keywords_generated,
                 )
+
+        if _job_was_cancelled(db, job):
+            logger.info("Discovery job %s cancelled before completion", job_id)
+            return
+
+        if (
+            keyword_type_filter == "beta"
+            and beta_queue
+            and not beta_scored
+            and keywords_generated == 0
+        ):
+            job.status = "failed"
+            job.progress_phase = "failed"
+            job.error_message = (
+                "Beta batch LLM scoring failed (often LLM timeout). "
+                "Check LLM settings or set LLM_REQUEST_TIMEOUT_SECONDS."
+            )
+            job.completed_at = datetime.utcnow()
+            db.commit()
+            logger.warning(
+                "Discovery job %s failed: beta scoring returned no keywords",
+                job_id,
+            )
+            return
 
         job.status = "completed"
         job.keywords_generated = keywords_generated
@@ -247,7 +305,7 @@ async def run_trend_discovery(
         logger.error("Discovery job %s failed: %s", job_id, exc)
         raise
     finally:
-        tiktok.end_batch()
+        await tiktok.end_batch_async()
         db.close()
 
 

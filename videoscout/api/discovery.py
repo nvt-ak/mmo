@@ -4,8 +4,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -29,11 +30,6 @@ from videoscout.workers.trend_discovery import run_trend_discovery_sync
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-ACTIVE_JOB_STATUSES = ("started", "running")
-TERMINAL_JOB_STATUSES = ("completed", "failed")
-SSE_POLL_INTERVAL_SECONDS = 1.0
-
-
 def _job_to_response(job: DiscoveryJobModel) -> DiscoveryJobResponse:
     progress = compute_discovery_progress(job)
     return DiscoveryJobResponse(
@@ -55,13 +51,71 @@ def _job_to_response(job: DiscoveryJobModel) -> DiscoveryJobResponse:
     )
 
 
+ACTIVE_JOB_STATUSES = ("started", "running")
+TERMINAL_JOB_STATUSES = ("completed", "failed")
+SSE_POLL_INTERVAL_SECONDS = 1.0
+DISCOVERY_JOB_STALE_MINUTES = max(
+    5,
+    int(os.getenv("DISCOVERY_JOB_STALE_MINUTES", "30")),
+)
+
+
+def _job_activity_at(job: DiscoveryJobModel) -> datetime:
+    return job.started_at or job.created_at
+
+
+def _expire_stale_discovery_jobs(db: Session) -> int:
+    """Mark abandoned started/running jobs failed so a new run can start."""
+    now = datetime.utcnow()
+    cutoff = now - timedelta(minutes=DISCOVERY_JOB_STALE_MINUTES)
+    never_started_cutoff = now - timedelta(minutes=5)
+    stale_jobs = (
+        db.query(DiscoveryJobModel)
+        .filter(DiscoveryJobModel.status.in_(ACTIVE_JOB_STATUSES))
+        .all()
+    )
+    expired = 0
+    for job in stale_jobs:
+        stale = _job_activity_at(job) < cutoff
+        if job.status == "started" and job.started_at is None:
+            stale = stale or job.created_at < never_started_cutoff
+        if not stale:
+            continue
+        job.status = "failed"
+        job.progress_phase = "failed"
+        job.error_message = (
+            "Discovery job timed out (API restarted or worker stopped). "
+            "Start a new run."
+        )
+        job.completed_at = datetime.utcnow()
+        expired += 1
+    if expired:
+        db.commit()
+        logger.warning("Expired %d stale discovery job(s)", expired)
+    return expired
+
+
 def _get_active_discovery_job(db: Session) -> DiscoveryJobModel | None:
+    _expire_stale_discovery_jobs(db)
     return (
         db.query(DiscoveryJobModel)
         .filter(DiscoveryJobModel.status.in_(ACTIVE_JOB_STATUSES))
         .order_by(DiscoveryJobModel.created_at.desc())
         .first()
     )
+
+
+def _cancel_discovery_job(
+    job: DiscoveryJobModel,
+    *,
+    reason: str,
+) -> None:
+    if job.status in TERMINAL_JOB_STATUSES:
+        return
+    job.status = "failed"
+    job.progress_phase = "failed"
+    job.error_message = reason
+    job.completed_at = datetime.utcnow()
 
 
 @router.post("/discovery/run", response_model=DiscoveryRunResponse)
@@ -77,10 +131,20 @@ async def run_discovery(
 
     active_job = _get_active_discovery_job(db)
     if active_job is not None:
-        raise HTTPException(
-            409,
-            f"Discovery job {active_job.id} is already in progress",
+        if not payload.force:
+            raise HTTPException(
+                409,
+                detail={
+                    "message": f"Discovery job {active_job.id} is already in progress",
+                    "active_job_id": str(active_job.id),
+                },
+            )
+        _cancel_discovery_job(
+            active_job,
+            reason="Cancelled to start a new discovery run.",
         )
+        db.commit()
+        logger.info("Force-cancelled discovery job %s for new run", active_job.id)
 
     job = DiscoveryJobModel(
         id=uuid.uuid4(),
@@ -118,6 +182,25 @@ async def get_discovery_job(job_id: str, db: Session = Depends(get_db)):
     job = db.query(DiscoveryJobModel).filter(DiscoveryJobModel.id == job_uuid).first()
     if not job:
         raise HTTPException(404, "Job not found")
+    return _job_to_response(job)
+
+
+@router.post("/discovery/jobs/{job_id}/cancel", response_model=DiscoveryJobResponse)
+async def cancel_discovery_job(job_id: str, db: Session = Depends(get_db)):
+    """Cancel an in-progress discovery job so a new run can start."""
+    try:
+        job_uuid = uuid.UUID(job_id)
+    except ValueError as exc:
+        raise HTTPException(404, "Job not found") from exc
+
+    job = db.query(DiscoveryJobModel).filter(DiscoveryJobModel.id == job_uuid).first()
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job.status in TERMINAL_JOB_STATUSES:
+        raise HTTPException(409, "Job is already finished")
+    _cancel_discovery_job(job, reason="Cancelled by user.")
+    db.commit()
+    db.refresh(job)
     return _job_to_response(job)
 
 

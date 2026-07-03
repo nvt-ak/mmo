@@ -44,6 +44,7 @@ class Suggestion(SuggestionBase):
     keyword_type: str = 'beta'
     discovery_source: Optional[str] = None
     trend_signals: Optional[Dict[str, Any]] = None
+    platform_signals: Optional[Dict[str, Any]] = None
     gate_profile: Optional[str] = None
     tiktok_unverified: bool = False
     tiktok_status: Optional[str] = None
@@ -218,6 +219,7 @@ class ScanProgressResponse(BaseModel):
 class DiscoveryRunRequest(BaseModel):
     keyword_type_filter: str = 'both'  # nurture | beta | both
     region_code: str = 'DE'
+    force: bool = False
 
 
 class DiscoveryRunResponse(BaseModel):
@@ -602,12 +604,30 @@ class TikTokConfig(BaseModel):
     check_enabled: bool = True
 
 
+class ScoringRubricField(BaseModel):
+    text: str
+    custom_text: Optional[str] = None
+    default_text: str
+    is_custom: bool
+
+
+class ScoringRubricsConfig(BaseModel):
+    nurture: ScoringRubricField
+    beta: ScoringRubricField
+
+
+class UpdateScoringRubrics(BaseModel):
+    nurture: Optional[str] = None
+    beta: Optional[str] = None
+
+
 class SettingsResponse(BaseModel):
     weights: ScoringWeights
     filters: Dict[str, Any]
     niche: NicheDefinition
     llm: LLMConfig
     tiktok: TikTokConfig
+    scoring_rubrics: ScoringRubricsConfig
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -615,6 +635,7 @@ class UpdateSettingsRequest(BaseModel):
     filters: Optional[Dict[str, Any]] = None
     niche: Optional[NicheDefinition] = None
     llm: Optional[UpdateLLMConfig] = None
+    scoring_rubrics: Optional[UpdateScoringRubrics] = None
     tiktok: Optional[TikTokConfig] = None
 
 

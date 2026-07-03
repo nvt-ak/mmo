@@ -33,6 +33,7 @@ import type {
   SuggestionStatus,
   VideoReviewStatus,
 } from "./types";
+import { normalizeSettingsResponse } from "./normalize-settings";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -40,28 +41,44 @@ class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public activeJobId?: string,
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
-function formatApiErrorBody(body: unknown, status: number): string {
+export { ApiError };
+
+function formatApiErrorBody(body: unknown, status: number): { message: string; activeJobId?: string } {
   if (!body || typeof body !== "object") {
-    return `Request failed (${status})`;
+    return { message: `Request failed (${status})` };
   }
   const record = body as {
-    error?: { message?: string };
-    detail?: string | Array<{ message?: string; msg?: string }>;
+    error?: { message?: string; details?: { active_job_id?: string } };
+    detail?: string | { message?: string; active_job_id?: string } | Array<{ message?: string; msg?: string }>;
   };
-  if (record.error?.message) return record.error.message;
-  if (typeof record.detail === "string") return record.detail;
-  if (Array.isArray(record.detail)) {
-    return record.detail
-      .map((item) => item.message ?? item.msg ?? "Invalid request")
-      .join("; ");
+  if (record.error?.message) {
+    return {
+      message: record.error.message,
+      activeJobId: record.error.details?.active_job_id,
+    };
   }
-  return `Request failed (${status})`;
+  if (typeof record.detail === "string") return { message: record.detail };
+  if (record.detail && typeof record.detail === "object" && !Array.isArray(record.detail)) {
+    return {
+      message: record.detail.message ?? `Request failed (${status})`,
+      activeJobId: record.detail.active_job_id,
+    };
+  }
+  if (Array.isArray(record.detail)) {
+    return {
+      message: record.detail
+        .map((item) => item.message ?? item.msg ?? "Invalid request")
+        .join("; "),
+    };
+  }
+  return { message: `Request failed (${status})` };
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -75,7 +92,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new ApiError(formatApiErrorBody(body, res.status), res.status);
+    const { message, activeJobId } = formatApiErrorBody(body, res.status);
+    throw new ApiError(message, res.status, activeJobId);
   }
 
   if (res.status === 204) {
@@ -176,16 +194,26 @@ export const api = {
   getScanStatus: (jobId: string) =>
     apiFetch<ScanProgressResponse>(`/api/v1/scan/status/${jobId}`),
 
-  runDiscovery: (keywordTypeFilter: KeywordTypeFilter = "both") =>
+  runDiscovery: (keywordTypeFilter: KeywordTypeFilter = "both", force = false) =>
     apiFetch<DiscoveryRunResponse>("/api/v1/discovery/run", {
       method: "POST",
-      body: JSON.stringify({ keyword_type_filter: keywordTypeFilter, region_code: "DE" }),
+      body: JSON.stringify({
+        keyword_type_filter: keywordTypeFilter,
+        region_code: "DE",
+        force,
+      }),
+    }),
+
+  cancelDiscoveryJob: (jobId: string) =>
+    apiFetch<DiscoveryJobResponse>(`/api/v1/discovery/jobs/${jobId}/cancel`, {
+      method: "POST",
     }),
 
   getDiscoveryJob: (jobId: string) =>
     apiFetch<DiscoveryJobResponse>(`/api/v1/discovery/jobs/${jobId}`),
 
-  getSettings: () => apiFetch<SettingsResponse>("/api/v1/settings"),
+  getSettings: () =>
+    apiFetch<SettingsResponse>("/api/v1/settings").then(normalizeSettingsResponse),
 
   updateSettings: (payload: UpdateSettingsPayload) =>
     apiFetch<{ message: string }>("/api/v1/settings", {
@@ -352,5 +380,3 @@ export const api = {
       `/api/v1/pools?pool_type=${poolType}&pool_status=${poolStatus}`,
     ),
 };
-
-export { ApiError };
