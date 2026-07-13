@@ -1,4 +1,7 @@
-# US-060 — Keyword scoring diversity + platform insights
+# US-069 — Keyword scoring diversity + platform insights
+
+> Renumbered from US-060 (2026-07-13 doc sync, then US-067→US-069 to avoid clashing with ADR 0014 reserved IDs) — collided with
+> `US-060-tiktok-token-proxy-rotation.md`.
 
 **Lane:** normal  
 **Epic:** E09 Dual-Track Discovery  

@@ -61,7 +61,7 @@ Dual-track amendment (R7): ADR `docs/decisions/0011-dual-track-nurture-beta.md`.
 
 | Module | Responsibility | Phase |
 | --- | --- | --- |
-| M1 Keyword Intelligence | TrendDiscovery, dual inbox, agent score, learning | R1 (partial); R7 amends discovery |
+| M1 Keyword Intelligence | TrendDiscovery, dual inbox, agent score, learning | R1 (partial); R7 amends discovery; R7e/S1–S4 add TrendEvidence pipeline |
 | M2 Channel Discovery | Keyword → channels → subscribe (post-approve cascade) | R2 |
 | M3 Ingestion | Download + watcher | R3 |
 | M3b Batch Review | Keep/Skip daily UI | R4 |
@@ -69,16 +69,54 @@ Dual-track amendment (R7): ADR `docs/decisions/0011-dual-track-nurture-beta.md`.
 | M5 Feedback | TikTok reports → KB (beta-primary) | R6 |
 | M7 Profile Distribution | Typed pools → nurture/beta profile bulk post | R7b–c |
 
-### M1 Discovery (R7)
+### M1 Discovery (R7 → R7e/f evidence pipeline)
+
+**ADRs:** `docs/decisions/0013-trend-evidence-discovery-pipeline.md`,
+`docs/decisions/0014-search-sample-validation-evidence.md`.
+
+R7a's single-pass `TrendDiscovery → TikTokEvaluator` flow was superseded by a
+3-stage pipeline where **TrendEvidence** (`videoscout/core_engine/trend_evidence.py`)
+is the versioned, persisted contract between every stage — not just an LLM prompt DTO:
 
 ```text
-TrendDiscovery (YouTube / social / web)
+CandidateGenerator (candidate_generator.py)
+  → dual YouTube sources: youtube_most_popular (popularity) +
+    youtube_velocity (emergence) — provenance-tagged, never mixed
+  → velocity = log(views) / sqrt(hours_since_publish),
+    stored as raw + percentile_region_category (scorers read percentile only)
+
+EvidenceBuilder (evidence_enrichment.py, search_sample.py)
+  → TikTokEvaluator gate (Tier 1 — every candidate, saturation tier)
   → classify keyword_type (nurture | beta)
-  → TikTokEvaluator (gate only — not discovery)
-  → dual inbox (pending)
+  → nurture: heuristic/LLM-batch scoring only (build_scored_candidate)
+  → beta: score_beta_candidate() using KeywordContextBuilder KB context
+    (keyword_context.py) — see ADR 0012
+  → Top-N (config, default 15) get Tier 2–4 enrichment:
+    search-sample distribution stats (search_sample.py, per-platform,
+    never merged for LLM), Population Context (estimated_result_count),
+    Representation Quality heuristics, Tier-1 channel cache, supply
+    pressure + creator diversity
+
+Ranker (discovery_ranker.py, history_prior.py)
+  → LifecycleClassifier (early_accelerating | stable | late | noise) —
+    derived at rank time from evidence, never persisted
+  → history_prior from past approve/reject/report outcomes
+  → validation_pass.py — second, delta-only LLM pass on Top-N
+    (confirmed | weakened | contradicted; locks trend/relevance/specificity,
+    adjusts generalizability/video_performance/confidence)
+  → final order → dual inbox (pending), platform_signals JSONB persisted
 ```
 
+Rule: `raw` / `derived` / `metadata` are never mixed on TrendEvidence; lifecycle
+stage and validation results live on `platform_signals` (agent-facing), not on
+the evidence record itself. `schema_version` is required (`"2"` current, adds
+Tier 2–4 fields over v1).
+
 Channel-first `api/scan` deprecated as primary path. TikTok is evaluation layer only.
+
+**Not yet implemented (ADR 0014 roadmap):** Trend Cluster entity + suggested
+aliases (Phase 2, draft US-066), Opportunity Assessment — Durability,
+Dependency Risk (Phase 3, draft US-067).
 
 ### M7 Profile Distribution (R7)
 

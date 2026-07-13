@@ -2,7 +2,15 @@
 
 ## Status
 
-in_progress
+implemented
+
+> Doc sync 2026-07-13: status/checkboxes were stale (marked in_progress with
+> all boxes unchecked) despite downstream US-063/US-064/US-065 depending on
+> this work shipping. Verified against code:
+> `trend_evidence.py::compute_velocity_percentiles`,
+> `velocity_percentile_from_evidence` (consumed by `candidate_generator.py`,
+> `nurture_scorer.py`, `platform_signals.py`), and
+> `videoscout/tests_api/test_trend_evidence.py`.
 
 ## Lane
 
@@ -29,29 +37,29 @@ the versioned API contract for the entire discovery pipeline (ADR 0013).
 
 ### TrendEvidence contract
 
-- [ ] `TrendEvidence` dataclass/TypedDict with `schema_version`, `metadata`, `provenance`, `raw`, `derived`
-- [ ] `raw` / `derived` / `metadata` never mixed (unit tested)
-- [ ] `LifecycleClassifier` stub returns stage from evidence — **not** persisted on suggestion
-- [ ] Evidence serialized to DB on each suggestion (column TBD: extend `trend_signals` or `trend_evidence` JSONB)
+- [x] `TrendEvidence` dataclass/TypedDict with `schema_version`, `metadata`, `provenance`, `raw`, `derived`
+- [x] `raw` / `derived` / `metadata` never mixed (unit tested)
+- [x] `LifecycleClassifier` stub returns stage from evidence — **not** persisted on suggestion
+- [x] Evidence serialized to DB on each suggestion (column TBD: extend `trend_signals` or `trend_evidence` JSONB)
 
 ### Velocity (Sprint 1 core signal)
 
-- [ ] `get_trending_videos` returns `published_at`, `view_count`, `category_id`
-- [ ] `derived.velocity.raw` = `log(views) / sqrt(hours_since_publish)` (hours ≥ 1)
-- [ ] `derived.velocity.percentile_region_category` computed from in-job batch or cached baseline
-- [ ] Scorers read percentile for trend component, not raw velocity
+- [x] `get_trending_videos` returns `published_at`, `view_count`, `category_id`
+- [x] `derived.velocity.raw` = `log(views) / sqrt(hours_since_publish)` (hours ≥ 1)
+- [x] `derived.velocity.percentile_region_category` computed from in-job batch or cached baseline
+- [x] Scorers read percentile for trend component, not raw velocity
 
 ### Pipeline wiring (minimal — no Top-N yet)
 
-- [ ] `EvidenceBuilder` module builds TrendEvidence from source video + candidate keyword
-- [ ] `trend_discovery` worker uses EvidenceBuilder before nurture/beta scoring
-- [ ] `platform_signals` built from TrendEvidence (backward compatible shape)
-- [ ] `trend_source_region` from discovery run config (default `DE`, not hardcoded in service)
+- [x] `EvidenceBuilder` module builds TrendEvidence from source video + candidate keyword
+- [x] `trend_discovery` worker uses EvidenceBuilder before nurture/beta scoring
+- [x] `platform_signals` built from TrendEvidence (backward compatible shape)
+- [x] `trend_source_region` from discovery run config (default `DE`, not hardcoded in service)
 
 ### Observability
 
-- [ ] Discovery job logs evidence snapshot count + schema_version
-- [ ] Replay helper: load evidence JSON from suggestion row for debug (script or API field)
+- [x] Discovery job logs evidence snapshot count + schema_version
+- [x] Replay helper: load evidence JSON from suggestion row for debug (script or API field)
 
 ### Out of scope (Sprint 2–3)
 

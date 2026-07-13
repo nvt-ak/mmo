@@ -65,7 +65,7 @@ post confirm → posted
 
 | ID | Name | v1 Status |
 | --- | --- | --- |
-| M1 | Keyword Intelligence (dual-track) | Partial — R7 amends discovery |
+| M1 | Keyword Intelligence (dual-track) | Implemented — R7 discovery + R7e/S1–S4 TrendEvidence pipeline (ADR 0013/0014) done; R7f/g Trend Cluster + Opportunity Assessment planned |
 | M2 | Channel Discovery | Implemented (R2) |
 | M3 | Ingestion (download + watcher) | Implemented (R3) |
 | M3b | Batch Review | Implemented (R4) |
@@ -128,6 +128,8 @@ PerformanceReport:  submitted → ingested  (beta-primary)
 | --- | --- |
 | `docs/superpowers/specs/2026-07-02-dual-track-keyword-discovery-design.md` | R7 dual-track spec |
 | `docs/decisions/0011-dual-track-nurture-beta.md` | Dual-track ADR |
+| `docs/decisions/0013-trend-evidence-discovery-pipeline.md` | TrendEvidence pipeline ADR (Sprint 1–3) |
+| `docs/decisions/0014-search-sample-validation-evidence.md` | Search-sample evidence + validation ADR (Sprint 4) |
 | `docs/product/agent-learning-system.md` | Learning architecture |
 | `docs/product/keyword-experiments.md` | Experiment workflow |
 | `docs/ARCHITECTURE.md` | System architecture |

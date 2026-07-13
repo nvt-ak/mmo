@@ -18,7 +18,7 @@ Active stories for VideoScout. Create story packets before implementation
 | E06 Ingestion | M3 — download + channel watcher | implemented (R3) |
 | E07 Batch & Merge | M3b + M4 — review UI + ffmpeg merge | implemented (R4–R5) |
 | E08 Feedback | M5 — TikTok performance reports on web | implemented (R6) |
-| E09 Dual-Track Discovery | M1 R7 — trend discovery, nurture/beta split | **R7c done** |
+| E09 Dual-Track Discovery | M1 R7 — trend discovery, nurture/beta split | **R7 evidence pipeline (Sprint 1–4) done**; R7d/R8 next |
 
 ## Story Index
 
@@ -50,6 +50,12 @@ Active stories for VideoScout. Create story packets before implementation
 | US-059 | Discovery progress bar | E09 | tiny | implemented |
 | US-060 | TikTok msToken pool + proxy rotation | E09 | normal | implemented |
 | US-061 | Runtime scoring rubric + batch spread | E09 | normal | implemented |
+| US-062 | TrendEvidence schema + velocity percentile (Sprint 1) | E09 | normal | implemented |
+| US-063 | Top-N evidence enrichment (Sprint 2) | E09 | normal | implemented |
+| US-064 | Dual-source discovery + ranker (Sprint 3) | E09 | normal | implemented |
+| US-065 | Search-sample evidence + validation pass (Sprint 4, ADR 0014) | E09 | normal | implemented |
+| US-068 | Discovery job cancel + force restart *(renumbered from US-059)* | E09 | tiny | implemented |
+| US-069 | Keyword scoring diversity + platform insights *(renumbered from US-060)* | E09 | normal | implemented |
 
 ## Roadmap Phases
 
@@ -66,7 +72,14 @@ Active stories for VideoScout. Create story packets before implementation
 | R7b | Profiles + typed pools | US-052 |
 | R7b+ | TikTok gate (msToken) | US-053 |
 | R7c | Beta LLM scoring + learning approval | US-054, US-055, US-056, US-057 |
-| R7d | Trend sources expansion | TBD |
+| R7c+ | Discovery UX (SSE, cancel/force, progress, insights, msToken pool, rubric spread) | US-058, US-059, US-060, US-061, US-068, US-069 |
+| R7e S1 | TrendEvidence v1 + velocity percentile (ADR 0013) | US-062 |
+| R7e S2 | Top-N evidence enrichment (ADR 0013) | US-063 |
+| R7e S3 | Dual-source discovery + ranker (ADR 0013) | US-064 |
+| R7e S4 | Search-sample evidence + validation pass (ADR 0014) | US-065 |
+| R7f | Trend Cluster + suggested aliases (ADR 0014 Phase 2) | US-066 (draft, per ADR 0014) |
+| R7g | Opportunity Assessment: Trend/Generalizability/Durability/Dependency Risk (ADR 0014 Phase 3) | US-067 (draft, per ADR 0014) |
+| R7d | Trend sources expansion (Google Trends, Reddit, RSS via TrendEvidence `raw.*` + provenance) | TBD |
 | R8 | v2 upload | TBD |
 
 ## Notes
@@ -74,3 +87,12 @@ Active stories for VideoScout. Create story packets before implementation
 - US-005 (evaluate_keyword LLM) folded into US-011
 - US-004 deferred until R5 (full workflow E2E)
 - US-054–056: beta scoring pipeline per ADR 0012; nurture stays heuristic
+- **2026-07-13 doc sync:** US-062–065 (TrendEvidence pipeline, ADR 0013/0014)
+  existed as story packets with working code but were missing from this
+  backlog and unregistered in `harness.db` (see `AGENTS.md` → Harness CLI
+  commands, run locally). Also found two ID collisions — two files each
+  claimed `US-059` and `US-060`. The discovery-progress-bar and
+  tiktok-token-proxy-rotation stories keep their original IDs (already
+  referenced elsewhere); `discovery-job-cancel-force` → **US-068** and
+  `keyword-scoring-insights` → **US-069** (US-066/US-067 stay reserved for
+  ADR 0014 Phase 2/3 per that ADR's own roadmap table).

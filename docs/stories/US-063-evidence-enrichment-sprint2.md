@@ -2,7 +2,10 @@
 
 ## Status
 
-in_progress
+implemented
+
+> Doc sync 2026-07-13: status was stale (in_progress) though all acceptance
+> boxes were already checked and downstream US-065 shipped on top of it.
 
 ## Lane
 
