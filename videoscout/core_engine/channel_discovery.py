@@ -1,9 +1,10 @@
 """Keyword-based YouTube channel discovery and scoring."""
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import logging
 import math
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from videoscout.core_engine.nurture_scorer import (
     _GENERIC_TOKENS,
@@ -39,6 +40,12 @@ METADATA_ZERO_MATCH_THRESHOLD = 0.25
 MIN_PER_VIDEO_OVERLAP = 0.5
 CATALOG_PATTERN_MIN_SHARE = 0.6
 CATALOG_MIN_NON_MATCHING = 3
+
+# Short-upload cadence bonus constants (US-076b).
+SHORT_MAX_DURATION_SEC = 180
+MIN_SHORTS_PER_DAY = 1.0
+CADENCE_BONUS_MAX = 5.0
+CADENCE_MIN_AVG_VIEWS = 50_000
 
 
 def _channel_content_tokens(text: str) -> set[str]:
@@ -144,12 +151,82 @@ def _extract_absent_dominant_pattern(
     return None
 
 
+def _parse_published_at(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        normalized = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(normalized)
+    except (TypeError, ValueError):
+        return None
+
+
+def compute_short_upload_cadence(
+    videos: List[Dict[str, Any]],
+    *,
+    short_max_duration_sec: int = SHORT_MAX_DURATION_SEC,
+    timestamp_key: str = "published_at",
+) -> Dict[str, Any]:
+    """
+    Compute short-upload cadence for a per-channel video list.
+
+    Reuses the span formula from ``search_sample.compute_distribution_stats``:
+    ``count / max(span_days, 1)``. Only videos with a known duration and
+    timestamp are counted, so legacy callers without ``duration_sec`` do not
+    accidentally treat every video as a short.
+    """
+    timestamps: List[datetime] = []
+    for video in videos:
+        duration = video.get("duration_sec")
+        if not isinstance(duration, (int, float)):
+            continue
+        if duration > short_max_duration_sec:
+            continue
+        dt = _parse_published_at(video.get(timestamp_key))
+        if dt is not None:
+            timestamps.append(dt)
+
+    shorts_count = len(timestamps)
+    if shorts_count == 0:
+        return {
+            "shorts_count": 0,
+            "shorts_per_day": 0.0,
+            "window_span_days": 0.0,
+            "cadence_confidence": "low",
+        }
+
+    newest = max(timestamps)
+    oldest = min(timestamps)
+    span_days = max((newest - oldest).total_seconds() / 86400.0, 1.0)
+    shorts_per_day = round(shorts_count / span_days, 4)
+
+    return {
+        "shorts_count": shorts_count,
+        "shorts_per_day": shorts_per_day,
+        "window_span_days": round(span_days, 4),
+        "cadence_confidence": "high" if shorts_count >= 3 else "low",
+    }
+
+
+def _cadence_bonus(
+    cadence: Dict[str, Any],
+    channel_avg_views: Optional[int],
+) -> float:
+    """Return cadence bonus when cadence and avg views both meet thresholds."""
+    if cadence.get("shorts_per_day", 0.0) < MIN_SHORTS_PER_DAY:
+        return 0.0
+    if channel_avg_views is None or channel_avg_views < CADENCE_MIN_AVG_VIEWS:
+        return 0.0
+    return CADENCE_BONUS_MAX
+
+
 def evaluate_channel_relevance(
     keyword: str,
     *,
     channel_name: str,
     channel_description: str,
     videos: List[Dict[str, Any]],
+    channel_avg_views: Optional[int] = None,
 ) -> Tuple[bool, float, str, Dict[str, Any]]:
     """
     Decide whether a channel should be subscribed for a keyword.
@@ -158,127 +235,129 @@ def evaluate_channel_relevance(
     explicit branch labels required by US-076:
     ``metadata_pass``, ``multi_video``, ``catalog_coherent_single``,
     ``catalog_outlier_single``, ``rejected``.
+
+    US-076b enrichment: ``signals`` also contains short-upload cadence bonus
+    fields. Cadence is never a hard subscribe gate; it only enriches
+    ``source_quality_score`` for logging and tie-breaking.
     """
     kw_tokens = _distinctive_keyword_tokens(keyword)
-    if not kw_tokens:
-        signals = {
-            "video_best": 0.0,
-            "match_count": 0,
-            "match_rate": 0.0,
-            "metadata_score": 0.0,
-            "catalog_dominant_pattern": None,
-            "decision_branch": "rejected",
-        }
-        return False, 0.0, "rejected", signals
 
-    overlaps = _per_video_overlaps(kw_tokens, videos)
-    match_count = sum(1 for o in overlaps if o >= MIN_PER_VIDEO_OVERLAP)
-    video_best = max(overlaps) if overlaps else 0.0
-    match_rate = round(match_count / len(videos), 3) if videos else 0.0
-    metadata_score = _metadata_score(kw_tokens, channel_name, channel_description)
+    # US-076 decision-tree defaults (degenerate keyword case).
+    video_best = 0.0
+    match_count = 0
+    match_rate = 0.0
+    metadata_score = 0.0
+    catalog_dominant_pattern = None
+    passed = False
+    branch = "rejected"
+    base_score = 0.0
 
-    # 1. Metadata pass — catches official/artist channels whose recent uploads
-    #    omit the trend tokens. A lower bar is used when no recent video is a
-    #    strong match, which is exactly the Cargo - Topic failure mode.
-    metadata_threshold = (
-        METADATA_ZERO_MATCH_THRESHOLD
-        if videos and match_count == 0
-        else METADATA_PASS_THRESHOLD
-    )
-    if metadata_score >= metadata_threshold:
-        signals = {
-            "video_best": video_best,
-            "match_count": match_count,
-            "match_rate": match_rate,
-            "metadata_score": metadata_score,
-            "catalog_dominant_pattern": None,
-            "decision_branch": "metadata_pass",
-        }
-        return True, max(video_best, metadata_score), "metadata_pass", signals
+    if kw_tokens:
+        overlaps = _per_video_overlaps(kw_tokens, videos)
+        match_count = sum(1 for o in overlaps if o >= MIN_PER_VIDEO_OVERLAP)
+        video_best = max(overlaps) if overlaps else 0.0
+        match_rate = round(match_count / len(videos), 3) if videos else 0.0
+        metadata_score = _metadata_score(kw_tokens, channel_name, channel_description)
 
-    if not videos:
-        signals = {
-            "video_best": 0.0,
-            "match_count": 0,
-            "match_rate": 0.0,
-            "metadata_score": metadata_score,
-            "catalog_dominant_pattern": None,
-            "decision_branch": "rejected",
-        }
-        return False, 0.0, "rejected", signals
-
-    # 2. Multiple strong video matches.
-    if match_count >= 2:
-        signals = {
-            "video_best": video_best,
-            "match_count": match_count,
-            "match_rate": match_rate,
-            "metadata_score": metadata_score,
-            "catalog_dominant_pattern": None,
-            "decision_branch": "multi_video",
-        }
-        return True, video_best, "multi_video", signals
-
-    # 3. Single strong video match — use catalog coherence to separate a true
-    #    themed channel (Mikado singt) from a one-off outlier (Hans Schmitz).
-    if match_count == 1:
-        match_index = next(
-            i for i, o in enumerate(overlaps) if o >= MIN_PER_VIDEO_OVERLAP
+        # 1. Metadata pass — catches official/artist channels whose recent uploads
+        #    omit the trend tokens. A lower bar is used when no recent video is a
+        #    strong match, which is exactly the Cargo - Topic failure mode.
+        metadata_threshold = (
+            METADATA_ZERO_MATCH_THRESHOLD
+            if videos and match_count == 0
+            else METADATA_PASS_THRESHOLD
         )
-        matching_video = videos[match_index]
-        matching_title = str(matching_video.get("title") or "")
-        non_matching = [
-            v for i, v in enumerate(videos) if i != match_index
-        ]
-        non_matching_titles = [
-            str(v.get("title") or "") for v in non_matching
-        ]
-
-        absent_pattern = _extract_absent_dominant_pattern(
-            non_matching_titles,
-            matching_title,
-            CATALOG_PATTERN_MIN_SHARE,
-            CATALOG_MIN_NON_MATCHING,
-        )
-
-        if absent_pattern is None:
-            branch = "catalog_coherent_single"
+        if metadata_score >= metadata_threshold:
             passed = True
-        else:
-            # Metadata can rescue a single match if it supports the keyword and
-            # the dominant catalog pattern is keyword-related.
-            pattern_tokens = set(absent_pattern.split())
-            metadata_rescue = (
-                metadata_score >= METADATA_PASS_THRESHOLD
-                and bool(pattern_tokens & kw_tokens)
+            branch = "metadata_pass"
+            base_score = max(video_best, metadata_score)
+        elif not videos:
+            passed = False
+            branch = "rejected"
+            base_score = 0.0
+        # 2. Multiple strong video matches.
+        elif match_count >= 2:
+            passed = True
+            branch = "multi_video"
+            base_score = video_best
+        # 3. Single strong video match — catalog coherence.
+        elif match_count == 1:
+            match_index = next(
+                i for i, o in enumerate(overlaps) if o >= MIN_PER_VIDEO_OVERLAP
             )
-            if metadata_rescue:
+            matching_video = videos[match_index]
+            matching_title = str(matching_video.get("title") or "")
+            non_matching = [v for i, v in enumerate(videos) if i != match_index]
+            non_matching_titles = [
+                str(v.get("title") or "") for v in non_matching
+            ]
+
+            absent_pattern = _extract_absent_dominant_pattern(
+                non_matching_titles,
+                matching_title,
+                CATALOG_PATTERN_MIN_SHARE,
+                CATALOG_MIN_NON_MATCHING,
+            )
+            catalog_dominant_pattern = absent_pattern
+
+            if absent_pattern is None:
                 branch = "catalog_coherent_single"
                 passed = True
             else:
-                branch = "catalog_outlier_single"
-                passed = False
+                # Metadata can rescue a single match if it supports the keyword
+                # and the dominant catalog pattern is keyword-related.
+                pattern_tokens = set(absent_pattern.split())
+                metadata_rescue = (
+                    metadata_score >= METADATA_PASS_THRESHOLD
+                    and bool(pattern_tokens & kw_tokens)
+                )
+                if metadata_rescue:
+                    branch = "catalog_coherent_single"
+                    passed = True
+                else:
+                    branch = "catalog_outlier_single"
+                    passed = False
+            base_score = video_best
+        # 4. No strong video match and metadata did not rescue.
+        else:
+            passed = False
+            branch = "rejected"
+            base_score = video_best
 
-        signals = {
-            "video_best": video_best,
-            "match_count": match_count,
-            "match_rate": match_rate,
-            "metadata_score": metadata_score,
-            "catalog_dominant_pattern": absent_pattern,
-            "decision_branch": branch,
+    # US-076b short-upload cadence bonus.
+    if branch == "metadata_pass":
+        cadence = {
+            "shorts_count": 0,
+            "shorts_per_day": 0.0,
+            "window_span_days": 0.0,
+            "cadence_confidence": "low",
         }
-        return passed, video_best, branch, signals
+        cadence_skipped = True
+        cadence_bonus = 0.0
+    else:
+        cadence = compute_short_upload_cadence(videos)
+        cadence_skipped = False
+        cadence_bonus = _cadence_bonus(cadence, channel_avg_views)
 
-    # 4. No strong video match and metadata did not rescue.
+    source_quality_score = round(base_score + cadence_bonus, 3)
+
     signals = {
         "video_best": video_best,
         "match_count": match_count,
         "match_rate": match_rate,
         "metadata_score": metadata_score,
-        "catalog_dominant_pattern": None,
-        "decision_branch": "rejected",
+        "catalog_dominant_pattern": catalog_dominant_pattern,
+        "decision_branch": branch,
+        "shorts_per_day": cadence["shorts_per_day"],
+        "cadence_bonus": cadence_bonus,
+        "cadence_skipped": cadence_skipped,
+        "source_quality_score": source_quality_score,
+        # Raw cadence details for debug / future UI.
+        "cadence_shorts_count": cadence["shorts_count"],
+        "cadence_window_span_days": cadence["window_span_days"],
+        "cadence_confidence": cadence["cadence_confidence"],
     }
-    return False, video_best, "rejected", signals
+    return passed, source_quality_score, branch, signals
 
 
 def compute_channel_keyword_relevance(

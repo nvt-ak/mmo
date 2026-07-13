@@ -64,6 +64,7 @@ Active stories for VideoScout. Create story packets before implementation
 | US-074 | Channel discovery minimum score threshold | E05 | high-risk | implemented |
 | US-075 | Channel content relevance gate | E05 | high-risk | implemented |
 | US-076 | Channel relevance v2 — metadata + catalog coherence | E05 | normal | implemented |
+| US-076b | Channel short cadence bonus (M2) | E05 | normal | implemented |
 
 ## Roadmap Phases
 

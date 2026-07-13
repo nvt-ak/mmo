@@ -106,11 +106,10 @@ Relevant product contract: `docs/product/workflows.md` (M2 Channel Discovery, M3
 - **Distinctive tokens:** Keyword tokens minus `_GENERIC_TOKENS` (and optionally DE fillers in a **channel-relevance-only** stopword set — do not mutate global `_GENERIC_TOKENS` without scorer regression tests).
 - **UI surfaces:** None required; cascade job status unchanged.
 
-### Deferred (US-076b)
+### Deferred
 
-- Channel-scoped `search.list(q=keyword, channelId=...)` when metadata pass needs song-level confirmation.
-- Adaptive `days` / `max_results` by `video_count` and upload cadence.
-- `relevanceLanguage` fix for DE keywords in `discover_channels` and `get_emergence_videos`.
+- **US-076b** — short cadence bonus on M2 cascade (`docs/stories/US-076b-channel-short-cadence-bonus.md`).
+- **US-076c** — channel-scoped search, adaptive fetch window, `_score_channel` cadence proxy fix, `relevanceLanguage` DE fix, optional `ChannelModel` cadence persist.
 
 ## Validation
 

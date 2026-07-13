@@ -153,6 +153,7 @@ class YouTubeService:
             - id: str
             - title: str
             - upload_date: str (YYYY-MM-DD)
+            - published_at: str (ISO 8601 from YouTube)
             - thumbnail_url: str
             - duration_sec: int
             - view_count: int
@@ -216,6 +217,7 @@ class YouTubeService:
                     "title": snippet.get("title", ""),
                     "description": snippet.get("description", ""),
                     "upload_date": snippet.get("publishedAt", "")[:10],
+                    "published_at": snippet.get("publishedAt"),
                     "thumbnail_url": (
                         snippet.get("thumbnails", {})
                         .get("medium", {})
@@ -286,6 +288,7 @@ class YouTubeService:
                 "title": snippet.get("title", ""),
                 "description": snippet.get("description", ""),
                 "upload_date": snippet.get("publishedAt", "")[:10],
+                "published_at": snippet.get("publishedAt"),
                 "thumbnail_url": (
                     snippet.get("thumbnails", {})
                     .get("medium", {})

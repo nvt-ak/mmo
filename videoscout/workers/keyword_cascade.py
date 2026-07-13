@@ -66,24 +66,31 @@ def run_keyword_cascade(job_id: str) -> None:
                 channel_name=candidate.name,
                 channel_description=candidate.description,
                 videos=recent_videos,
+                channel_avg_views=candidate.avg_views,
             )
             if passed:
                 relevant_candidates.append(candidate)
                 logger.debug(
-                    "Channel '%s' relevant for '%s': %s (score %.2f)",
+                    "Channel '%s' relevant for '%s': %s (score %.2f, "
+                    "shorts/day=%.2f, cadence_bonus=%.2f)",
                     candidate.name,
                     suggestion.keyword,
                     rel_reason,
                     relevance,
+                    rel_signals.get("shorts_per_day", 0.0),
+                    rel_signals.get("cadence_bonus", 0.0),
                 )
             else:
                 logger.info(
-                    "Channel '%s' filtered for '%s': branch=%s score=%.2f metadata=%.2f",
+                    "Channel '%s' filtered for '%s': branch=%s score=%.2f "
+                    "metadata=%.2f shorts/day=%.2f cadence_skipped=%s",
                     candidate.name,
                     suggestion.keyword,
                     rel_signals.get("decision_branch"),
                     relevance,
                     rel_signals.get("metadata_score"),
+                    rel_signals.get("shorts_per_day", 0.0),
+                    rel_signals.get("cadence_skipped"),
                 )
 
         for candidate in relevant_candidates[:5]:
