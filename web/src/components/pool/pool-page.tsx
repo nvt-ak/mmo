@@ -57,8 +57,8 @@ export function PoolPage({ poolType }: PoolPageProps) {
           />
         )}
         {items.length > 0 && (
-          <div className="surface-card overflow-hidden animate-fade-rise">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+          <div className="data-panel overflow-hidden">
+            <table className="data-table w-full min-w-0 border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-(--border) bg-(--surface-muted) text-xs uppercase tracking-wider text-(--muted)">
                   <th className="px-4 py-3 font-medium">Title</th>
@@ -72,7 +72,7 @@ export function PoolPage({ poolType }: PoolPageProps) {
                 {items.map((item, index) => (
                   <tr
                     key={`${item.kind}-${item.id}`}
-                    className="stagger-item border-b border-(--border-subtle) last:border-b-0 hover:bg-(--surface-muted)/60"
+                    className="border-b border-(--border-subtle) last:border-b-0"
                     style={{ ["--stagger-index" as string]: index }}
                   >
                     <td className="px-4 py-3.5 font-medium text-(--foreground-strong)">

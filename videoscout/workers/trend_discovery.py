@@ -13,6 +13,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from videoscout.core_engine.engine import SuggestionEngine
 from videoscout.core_engine.keyword_classifier import classify_keyword_type
+from videoscout.core_engine.classifier_calibration import build_classifier_calibration
 from videoscout.core_engine.keyword_scorer import score_beta_candidates_batch
 from videoscout.core_engine.nurture_scorer import score_nurture_candidates_batch
 from videoscout.core_engine.candidate_generator import (
@@ -30,9 +31,10 @@ from videoscout.core_engine.trend_evidence import (
     trend_signals_from_evidence,
 )
 from videoscout.db import get_session
-from videoscout.db.models import DiscoveryJobModel, SuggestionModel, TrendClusterModel
+from videoscout.db.models import DiscoveryJobModel, SettingsModel, SuggestionModel, TrendClusterModel
 from videoscout.services.tiktok import get_tiktok_service
 
+from videoscout.core_engine.discovery_qualification import qualifies_for_inbox
 from videoscout.core_engine.discovery_progress import (
     MAX_KEYWORDS_PER_JOB,
     TRENDING_VIDEO_LIMIT,
@@ -243,6 +245,8 @@ async def run_trend_discovery(
         max_word_width = 3 if keyword_type_filter == "nurture" else 5
         videos_scanned = 0
 
+        calibration = build_classifier_calibration(db)
+
         for source_kind, video, velocity_percentiles in iter_scored_source_videos(
             sources,
             region_code=region_code,
@@ -286,6 +290,7 @@ async def run_trend_discovery(
                 provisional_type = classify_keyword_type(
                     enriched_candidate["keyword"],
                     trend_source=discovery_source,
+                    calibration=calibration,
                 )
                 gate_profile = "light" if provisional_type == "nurture" else "full"
                 tiktok_gate = await engine.check_tiktok_gate(
@@ -324,6 +329,7 @@ async def run_trend_discovery(
                 nurture_queue,
                 db=db,
                 keyword_type_filter=keyword_type_filter,
+                classifier_calibration=calibration,
             )
             all_scored.extend(nurture_scored)
 
@@ -340,6 +346,7 @@ async def run_trend_discovery(
                 beta_queue,
                 db=db,
                 keyword_type_filter=keyword_type_filter,
+                classifier_calibration=calibration,
             )
             all_scored.extend(beta_scored)
 
@@ -379,8 +386,35 @@ async def run_trend_discovery(
             build_clusters(all_scored, llm_pair_decisions=pair_decisions)
             _commit_job_progress(db, job, progress_phase="rank_final")
             all_scored = apply_final_ranking(all_scored)
+
+            settings = db.query(SettingsModel).first()
+            min_score_threshold = float(
+                settings.min_score_threshold if settings else 0.55
+            )
+            min_specificity = float(settings.min_specificity if settings else 0.4)
+            min_saturation = float(settings.min_saturation if settings else 0.3)
+            qualified_scored = [
+                row
+                for row in all_scored
+                if qualifies_for_inbox(
+                    row,
+                    min_score_threshold=min_score_threshold,
+                    min_specificity=min_specificity,
+                    min_saturation=min_saturation,
+                )
+            ]
+            if len(qualified_scored) < len(all_scored):
+                logger.info(
+                    "Discovery job %s filtered %d/%d keywords below inbox gates "
+                    "(min_score=%.2f)",
+                    job_id,
+                    len(all_scored) - len(qualified_scored),
+                    len(all_scored),
+                    min_score_threshold,
+                )
+
             cluster_registry: Dict[str, TrendClusterModel] = {}
-            for scored in all_scored[:MAX_KEYWORDS_PER_JOB]:
+            for scored in qualified_scored[:MAX_KEYWORDS_PER_JOB]:
                 if keywords_generated >= MAX_KEYWORDS_PER_JOB:
                     break
                 keywords_generated = _save_keyword_if_new(

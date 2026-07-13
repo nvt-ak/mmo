@@ -157,8 +157,8 @@ export function BatchPage() {
         )}
 
         {items.length > 0 && (
-          <div className="surface-card overflow-hidden animate-fade-rise">
-            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+          <div className="data-panel overflow-hidden">
+            <table className="data-table w-full min-w-0 border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-(--border) bg-(--surface-muted) text-xs uppercase tracking-wider text-(--muted)">
                   {selectable && (
@@ -230,7 +230,7 @@ function VideoRow({
 }) {
   return (
     <tr
-      className="stagger-item border-b border-(--border-subtle) last:border-b-0 hover:bg-(--surface-muted)/60"
+      className="border-b border-(--border-subtle) last:border-b-0"
       style={{ ["--stagger-index" as string]: index }}
     >
       {selectable && (

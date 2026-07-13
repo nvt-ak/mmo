@@ -12,8 +12,21 @@ from videoscout.core_engine.keyword_classifier import (
     BETA_MIN_SCORE,
     classify_keyword_type,
 )
+from videoscout.core_engine.classifier_calibration import ClassifierCalibration
 from videoscout.core_engine.keyword_context import KeywordContextBuilder
 from videoscout.core_engine.platform_signals import build_platform_signals
+from videoscout.core_engine.scoring_reroute import (
+    MAX_REROUTE_DEPTH,
+    is_reroute,
+    make_reroute,
+    reroute_items,
+    should_accept_reroute,
+    split_finalize_results,
+)
+from videoscout.core_engine.scoring_validation import (
+    calibration_blend_weights,
+    validate_llm_components,
+)
 from videoscout.core_engine.scoring_rubric import (
     enforce_batch_relevance_tiebreak,
     enforce_batch_spread,
@@ -68,21 +81,55 @@ def get_scoring_weights(settings: Optional[SettingsModel]) -> Dict[str, float]:
     }
 
 
-def _heuristic_components(keyword: str, tiktok_gate: Dict[str, Any]) -> Dict[str, float]:
-    specificity = min(1.0, len(keyword.split()) / 5.0)
-    saturation_score = float(tiktok_gate.get("score", 0.5))
+def _heuristic_components(
+    keyword: str,
+    tiktok_gate: Dict[str, Any],
+    *,
+    candidate: Optional[Dict[str, Any]] = None,
+) -> Dict[str, float]:
+    from videoscout.core_engine.nurture_scorer import (
+        compute_saturation,
+        compute_specificity,
+        compute_title_relevance,
+        compute_trend_signal,
+        compute_video_performance,
+    )
+
+    trend_signals = (candidate or {}).get("trend_signals") or {}
+    source_title = str(trend_signals.get("source_title") or "")
+    discovery_source = (candidate or {}).get("discovery_source", "youtube_trend")
+    trend_evidence = (candidate or {}).get("trend_evidence")
+
+    relevance, _ = compute_title_relevance(keyword, source_title)
+    specificity, _ = compute_specificity(keyword, source_title)
+    saturation, _ = compute_saturation(tiktok_gate)
+    trend, _ = compute_trend_signal(
+        keyword,
+        discovery_source,
+        source_title,
+        trend_evidence=trend_evidence,
+    )
+    stats = tiktok_gate.get("tiktok_stats") or {}
+    video_performance, _ = compute_video_performance(stats)
+
     return {
-        "relevance": 0.5,
-        "specificity": round(specificity, 3),
-        "saturation": round(saturation_score, 3),
-        "trend": 0.7,
-        "video_performance": 0.5,
+        "relevance": relevance,
+        "specificity": specificity,
+        "saturation": saturation,
+        "trend": trend,
+        "video_performance": video_performance,
     }
 
 
-def heuristic_final_score(keyword: str, tiktok_gate: Dict[str, Any]) -> float:
-    components = _heuristic_components(keyword, tiktok_gate)
-    return round(0.5 * components["specificity"] + 0.5 * components["saturation"], 3)
+def heuristic_final_score(
+    keyword: str,
+    tiktok_gate: Dict[str, Any],
+    *,
+    candidate: Optional[Dict[str, Any]] = None,
+    weights: Optional[Dict[str, float]] = None,
+) -> float:
+    components = _heuristic_components(keyword, tiktok_gate, candidate=candidate)
+    return weighted_final_score(components, weights or _default_weights())
 
 
 def weighted_final_score(
@@ -214,28 +261,51 @@ def _finalize_beta_score(
     min_score: float,
     keyword_type_filter: str,
     linked_reports: int,
+    classifier_calibration: Optional[ClassifierCalibration] = None,
 ) -> Optional[Dict[str, Any]]:
     keyword = candidate["keyword"]
     discovery_source = candidate.get("discovery_source", "youtube_trend")
     tiktok_stats = tiktok_gate.get("tiktok_stats") or {}
     saturation_tier = tiktok_stats.get("saturation_tier", "moderate")
-    heuristic_final = heuristic_final_score(keyword, tiktok_gate)
+    heuristic_components = _heuristic_components(
+        keyword,
+        tiktok_gate,
+        candidate=candidate,
+    )
+    heuristic_final = heuristic_final_score(
+        keyword,
+        tiktok_gate,
+        candidate=candidate,
+        weights=weights,
+    )
 
     llm_components = clamp_components(llm_payload.get("component_scores") or {})
+    llm_components, validation_adjusted = validate_llm_components(
+        llm_components,
+        heuristic_components,
+        saturation_tier=saturation_tier,
+    )
     llm_components = _apply_saturation_cap(llm_components, saturation_tier)
     llm_final = weighted_final_score(llm_components, weights)
 
     if linked_reports < CALIBRATION_REPORT_THRESHOLD:
+        blend_llm_weight, blend_heuristic_weight = calibration_blend_weights(
+            linked_reports,
+            threshold=CALIBRATION_REPORT_THRESHOLD,
+            llm_weight_uncalibrated=BLEND_LLM_WEIGHT,
+        )
         final_score = round(
-            BLEND_LLM_WEIGHT * llm_final + BLEND_HEURISTIC_WEIGHT * heuristic_final,
+            blend_llm_weight * llm_final + blend_heuristic_weight * heuristic_final,
             3,
         )
         blend_meta = {
-            "llm_weight": BLEND_LLM_WEIGHT,
-            "heuristic_weight": BLEND_HEURISTIC_WEIGHT,
+            "llm_weight": blend_llm_weight,
+            "heuristic_weight": blend_heuristic_weight,
             "llm_final": llm_final,
             "heuristic_final": heuristic_final,
             "linked_beta_reports": linked_reports,
+            "heuristic_components": heuristic_components,
+            "validation_adjusted": validation_adjusted,
         }
     else:
         final_score = llm_final
@@ -246,11 +316,20 @@ def _finalize_beta_score(
         trend_source=discovery_source,
         saturation_tier=saturation_tier,
         agent_score=final_score,
+        calibration=classifier_calibration,
     )
 
     if keyword_type_filter in ("nurture", "beta") and keyword_type != keyword_type_filter:
         return None
     if keyword_type != "beta":
+        if should_accept_reroute("nurture", keyword_type_filter):
+            return make_reroute(
+                to_track="nurture",
+                from_track="beta",
+                keyword=keyword,
+                item={"candidate": candidate, "tiktok_gate": tiktok_gate},
+                final_score=final_score,
+            )
         return None
     if final_score < min_score:
         return None
@@ -342,12 +421,13 @@ def _finalize_batch_scores(
     min_score: float,
     keyword_type_filter: str,
     linked_reports: int,
-) -> List[Dict[str, Any]]:
+    classifier_calibration: Optional[ClassifierCalibration] = None,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     if not isinstance(scores, list):
         logger.warning("Beta batch LLM returned invalid scores payload")
         return []
 
-    results: List[Dict[str, Any]] = []
+    finalized_rows: List[Optional[Dict[str, Any]]] = []
     for row in scores:
         if not isinstance(row, dict):
             continue
@@ -355,19 +435,22 @@ def _finalize_batch_scores(
         item = lookup.get(keyword.lower())
         if not item:
             continue
-        finalized = _finalize_beta_score(
-            item["candidate"],
-            tiktok_gate=item["tiktok_gate"],
-            llm_payload=row,
-            weights=weights,
-            min_score=min_score,
-            keyword_type_filter=keyword_type_filter,
-            linked_reports=linked_reports,
+        finalized_rows.append(
+            _finalize_beta_score(
+                item["candidate"],
+                tiktok_gate=item["tiktok_gate"],
+                llm_payload=row,
+                weights=weights,
+                min_score=min_score,
+                keyword_type_filter=keyword_type_filter,
+                linked_reports=linked_reports,
+                classifier_calibration=classifier_calibration,
+            )
         )
-        if finalized:
-            results.append(finalized)
+    results, reroutes = split_finalize_results(finalized_rows)
     results = enforce_batch_relevance_tiebreak(results)
-    return enforce_batch_spread(results)
+    results = enforce_batch_spread(results)
+    return results, reroutes
 
 
 def _score_beta_chunk(
@@ -381,10 +464,11 @@ def _score_beta_chunk(
     min_score: float,
     keyword_type_filter: str,
     linked_reports: int,
-) -> List[Dict[str, Any]]:
+    classifier_calibration: Optional[ClassifierCalibration] = None,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     batch_rows, lookup = _prepare_batch_items(chunk, db)
     if not batch_rows:
-        return []
+        return [], []
 
     llm_response = _call_llm_json(
         llm=llm,
@@ -398,7 +482,15 @@ def _score_beta_chunk(
         min_score=min_score,
         keyword_type_filter=keyword_type_filter,
         linked_reports=linked_reports,
+        classifier_calibration=classifier_calibration,
     )
+
+
+def _merge_beta_chunk_results(
+    left: tuple[List[Dict[str, Any]], List[Dict[str, Any]]],
+    right: tuple[List[Dict[str, Any]], List[Dict[str, Any]]],
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    return left[0] + right[0], left[1] + right[1]
 
 
 def _score_beta_chunk_resilient(
@@ -412,7 +504,8 @@ def _score_beta_chunk_resilient(
     min_score: float,
     keyword_type_filter: str,
     linked_reports: int,
-) -> List[Dict[str, Any]]:
+    classifier_calibration: Optional[ClassifierCalibration] = None,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     try:
         return _score_beta_chunk(
             chunk,
@@ -424,11 +517,12 @@ def _score_beta_chunk_resilient(
             min_score=min_score,
             keyword_type_filter=keyword_type_filter,
             linked_reports=linked_reports,
+            classifier_calibration=classifier_calibration,
         )
     except BetaScoringError as exc:
         if _is_timeout_error(exc) and len(chunk) > 1:
             mid = len(chunk) // 2
-            return (
+            return _merge_beta_chunk_results(
                 _score_beta_chunk_resilient(
                     chunk[:mid],
                     db=db,
@@ -439,8 +533,9 @@ def _score_beta_chunk_resilient(
                     min_score=min_score,
                     keyword_type_filter=keyword_type_filter,
                     linked_reports=linked_reports,
-                )
-                + _score_beta_chunk_resilient(
+                    classifier_calibration=classifier_calibration,
+                ),
+                _score_beta_chunk_resilient(
                     chunk[mid:],
                     db=db,
                     llm=llm,
@@ -450,15 +545,16 @@ def _score_beta_chunk_resilient(
                     min_score=min_score,
                     keyword_type_filter=keyword_type_filter,
                     linked_reports=linked_reports,
-                )
+                    classifier_calibration=classifier_calibration,
+                ),
             )
         logger.warning("Beta chunk scoring failed (%d items): %s", len(chunk), exc)
-        return []
+        return [], []
     except Exception as exc:
         logger.error("Beta batch LLM scoring failed: %s", exc)
         if _is_timeout_error(exc) and len(chunk) > 1:
             mid = len(chunk) // 2
-            return (
+            return _merge_beta_chunk_results(
                 _score_beta_chunk_resilient(
                     chunk[:mid],
                     db=db,
@@ -469,8 +565,9 @@ def _score_beta_chunk_resilient(
                     min_score=min_score,
                     keyword_type_filter=keyword_type_filter,
                     linked_reports=linked_reports,
-                )
-                + _score_beta_chunk_resilient(
+                    classifier_calibration=classifier_calibration,
+                ),
+                _score_beta_chunk_resilient(
                     chunk[mid:],
                     db=db,
                     llm=llm,
@@ -480,10 +577,11 @@ def _score_beta_chunk_resilient(
                     min_score=min_score,
                     keyword_type_filter=keyword_type_filter,
                     linked_reports=linked_reports,
-                )
+                    classifier_calibration=classifier_calibration,
+                ),
             )
         logger.warning("Beta chunk scoring failed (%d items): %s", len(chunk), exc)
-        return []
+        return [], []
 
 
 async def score_beta_candidates_batch(
@@ -493,6 +591,8 @@ async def score_beta_candidates_batch(
     settings: Optional[SettingsModel] = None,
     keyword_type_filter: str = "both",
     llm_client: Optional[OpenAI] = None,
+    _reroute_depth: int = 0,
+    classifier_calibration: Optional[ClassifierCalibration] = None,
 ) -> List[Dict[str, Any]]:
     """
     Score multiple beta candidates in one LLM call (chunked by BATCH_MAX_SIZE).
@@ -513,24 +613,45 @@ async def score_beta_candidates_batch(
     llm = llm_client or create_llm_client(db)
 
     results: List[Dict[str, Any]] = []
+    reroutes: List[Dict[str, Any]] = []
 
     for start in range(0, len(items), BATCH_MAX_SIZE):
         chunk = items[start : start + BATCH_MAX_SIZE]
+        chunk_results, chunk_reroutes = _score_beta_chunk_resilient(
+            chunk,
+            db=db,
+            llm=llm,
+            model=llm_config["model"],
+            weights=weights,
+            settings=settings,
+            min_score=min_score,
+            keyword_type_filter=keyword_type_filter,
+            linked_reports=linked_reports,
+            classifier_calibration=classifier_calibration,
+        )
+        results.extend(chunk_results)
+        reroutes.extend(chunk_reroutes)
+
+    if (
+        reroutes
+        and _reroute_depth < MAX_REROUTE_DEPTH
+        and should_accept_reroute("nurture", keyword_type_filter)
+    ):
+        from videoscout.core_engine.nurture_scorer import score_nurture_candidates_batch
+
         results.extend(
-            _score_beta_chunk_resilient(
-                chunk,
+            await score_nurture_candidates_batch(
+                reroute_items(reroutes),
                 db=db,
-                llm=llm,
-                model=llm_config["model"],
-                weights=weights,
                 settings=settings,
-                min_score=min_score,
                 keyword_type_filter=keyword_type_filter,
-                linked_reports=linked_reports,
+                llm_client=llm_client,
+                _reroute_depth=_reroute_depth + 1,
+                classifier_calibration=classifier_calibration,
             )
         )
 
-    return results
+    return [row for row in results if not is_reroute(row)]
 
 
 async def score_beta_candidate(
@@ -550,4 +671,7 @@ async def score_beta_candidate(
         keyword_type_filter=keyword_type_filter,
         llm_client=llm_client,
     )
-    return scored[0] if scored else None
+    if not scored:
+        return None
+    first = scored[0]
+    return None if is_reroute(first) else first

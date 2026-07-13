@@ -106,7 +106,7 @@ export function FeedbackPage() {
           />
         </div>
 
-        <section className="surface-card p-6 animate-fade-rise">
+        <section className="panel-section p-6">
           <h2 className="font-editorial text-xl text-(--foreground-strong)">
             Agent accuracy
           </h2>
@@ -203,7 +203,7 @@ export function FeedbackPage() {
             {(historyQuery.data ?? []).map((report, index) => (
               <li
                 key={report.id}
-                className="stagger-item border-b border-(--border-subtle) pb-3 last:border-b-0"
+                className="border-b border-(--border-subtle) pb-3 last:border-b-0"
                 style={{ ["--stagger-index" as string]: index }}
               >
                 <div className="flex items-start justify-between gap-2">

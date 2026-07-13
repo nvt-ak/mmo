@@ -37,7 +37,6 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
     >
       <body className="min-h-full font-sans">
-        <div className="ambient-glow" aria-hidden />
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>

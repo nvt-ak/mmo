@@ -112,6 +112,8 @@ export const api = {
     limit?: number;
     offset?: number;
     search?: string;
+    sort?: string;
+    order?: "asc" | "desc";
   }) => {
     const q = new URLSearchParams();
     if (params.status) q.set("status", params.status);
@@ -119,6 +121,8 @@ export const api = {
     if (params.limit) q.set("limit", String(params.limit));
     if (params.offset) q.set("offset", String(params.offset));
     if (params.search) q.set("search", params.search);
+    if (params.sort) q.set("sort", params.sort);
+    if (params.order) q.set("order", params.order);
     const qs = q.toString();
     return apiFetch<SuggestionListResponse>(
       `/api/v1/suggestions${qs ? `?${qs}` : ""}`,

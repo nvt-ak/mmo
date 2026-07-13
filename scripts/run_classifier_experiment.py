@@ -8,6 +8,7 @@ Operator fills operator_tag in CSV; score with --score.
 Usage:
   python scripts/run_classifier_experiment.py --day 1 --region DE
   python scripts/run_classifier_experiment.py --score docs/superpowers/validation/classifier-day1.csv
+  python scripts/run_classifier_experiment.py --db-calibrate
 """
 from __future__ import annotations
 
@@ -206,6 +207,22 @@ def score_csv(path: Path) -> dict:
     return result
 
 
+def db_calibrate() -> None:
+    _load_env()
+    from videoscout.db import get_session
+    from videoscout.core_engine.classifier_calibration import (
+        build_classifier_calibration,
+        summarize_calibration,
+    )
+
+    db = get_session()
+    try:
+        calibration = build_classifier_calibration(db)
+        print(summarize_calibration(calibration))
+    finally:
+        db.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Classifier agreement experiment")
     parser.add_argument("--day", type=int, help="Experiment day number (1–7)")
@@ -217,7 +234,16 @@ def main() -> None:
         default=REPO_ROOT / "docs" / "superpowers" / "validation",
     )
     parser.add_argument("--score", type=Path, help="Score existing CSV after operator tags")
+    parser.add_argument(
+        "--db-calibrate",
+        action="store_true",
+        help="Print performance-report calibration summary from database",
+    )
     args = parser.parse_args()
+
+    if args.db_calibrate:
+        db_calibrate()
+        return
 
     if args.score:
         score_csv(args.score)

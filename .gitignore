@@ -30,3 +30,7 @@ videoscout.db-wal
 
 graphify-out/
 data/
+
+.codegraph
+
+web/.hallmark/

@@ -80,7 +80,7 @@ export function PerformanceReportForm({ onSubmitted, prefill }: PerformanceRepor
   });
 
   return (
-    <section className="surface-card p-6 animate-fade-rise">
+    <section className="panel-section">
       <h2 className="font-editorial text-xl text-(--foreground-strong)">
         Report performance
       </h2>
@@ -198,7 +198,7 @@ export function PendingFinalPicker({
   if (items.length === 0) return null;
 
   return (
-    <section className="surface-card p-6 animate-fade-rise">
+    <section className="panel-section">
       <h2 className="font-editorial text-xl text-(--foreground-strong)">
         Awaiting feedback
       </h2>

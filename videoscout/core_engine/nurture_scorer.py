@@ -10,6 +10,7 @@ from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from videoscout.core_engine.keyword_classifier import classify_keyword_type
+from videoscout.core_engine.classifier_calibration import ClassifierCalibration
 from videoscout.core_engine.trend_evidence import velocity_percentile_from_evidence
 from videoscout.core_engine.keyword_scorer import (
     BLEND_HEURISTIC_WEIGHT,
@@ -20,6 +21,14 @@ from videoscout.core_engine.keyword_scorer import (
 )
 from videoscout.core_engine.llm_config import create_llm_client, get_llm_config
 from videoscout.core_engine.platform_signals import build_platform_signals
+from videoscout.core_engine.scoring_reroute import (
+    MAX_REROUTE_DEPTH,
+    is_reroute,
+    make_reroute,
+    reroute_items,
+    should_accept_reroute,
+    split_finalize_results,
+)
 from videoscout.core_engine.scoring_rubric import (
     enforce_batch_relevance_tiebreak,
     enforce_batch_spread,
@@ -465,6 +474,7 @@ def score_nurture_heuristic(
     weights: Dict[str, float],
     keyword_type_filter: str = "both",
     batch_peer_flags: Optional[List[str]] = None,
+    classifier_calibration: Optional[ClassifierCalibration] = None,
 ) -> Optional[Dict[str, Any]]:
     keyword = candidate["keyword"]
     if not tiktok_gate.get("surface", True):
@@ -488,10 +498,19 @@ def score_nurture_heuristic(
         trend_source=discovery_source,
         saturation_tier=saturation_tier,
         agent_score=final_score,
+        calibration=classifier_calibration,
     )
     if keyword_type_filter in ("nurture", "beta") and keyword_type != keyword_type_filter:
         return None
     if keyword_type != "nurture":
+        if should_accept_reroute("beta", keyword_type_filter):
+            return make_reroute(
+                to_track="beta",
+                from_track="nurture",
+                keyword=keyword,
+                item={"candidate": candidate, "tiktok_gate": tiktok_gate},
+                final_score=final_score,
+            )
         return None
     if final_score < NURTURE_MIN_SCORE:
         return None
@@ -606,6 +625,7 @@ def _finalize_nurture_llm_row(
     weights: Dict[str, float],
     keyword_type_filter: str,
     batch_peer_flags: Optional[List[str]] = None,
+    classifier_calibration: Optional[ClassifierCalibration] = None,
 ) -> Optional[Dict[str, Any]]:
     candidate = item["candidate"]
     tiktok_gate = item["tiktok_gate"]
@@ -652,10 +672,19 @@ def _finalize_nurture_llm_row(
         trend_source=discovery_source,
         saturation_tier=saturation_tier,
         agent_score=final_score,
+        calibration=classifier_calibration,
     )
     if keyword_type_filter in ("nurture", "beta") and keyword_type != keyword_type_filter:
         return None
     if keyword_type != "nurture":
+        if should_accept_reroute("beta", keyword_type_filter):
+            return make_reroute(
+                to_track="beta",
+                from_track="nurture",
+                keyword=keyword,
+                item={"candidate": candidate, "tiktok_gate": tiktok_gate},
+                final_score=final_score,
+            )
         return None
     if final_score < NURTURE_MIN_SCORE:
         return None
@@ -711,6 +740,8 @@ async def score_nurture_candidates_batch(
     settings: Optional[SettingsModel] = None,
     keyword_type_filter: str = "both",
     llm_client: Optional[OpenAI] = None,
+    _reroute_depth: int = 0,
+    classifier_calibration: Optional[ClassifierCalibration] = None,
 ) -> List[Dict[str, Any]]:
     """Score nurture candidates via LLM batch; heuristic fallback per item on failure."""
     if not items:
@@ -723,6 +754,7 @@ async def score_nurture_candidates_batch(
     llm_config = get_llm_config(db)
     llm = llm_client or create_llm_client(db)
     results: List[Dict[str, Any]] = []
+    reroutes: List[Dict[str, Any]] = []
 
     for start in range(0, len(items), NURTURE_BATCH_MAX_SIZE):
         chunk = items[start : start + NURTURE_BATCH_MAX_SIZE]
@@ -769,53 +801,84 @@ async def score_nurture_candidates_batch(
             logger.warning("Nurture LLM batch failed, using heuristic fallback: %s", exc)
 
         if not llm_scores:
+            chunk_finalize_rows: List[Optional[Dict[str, Any]]] = []
             for item in chunk:
                 kw = item["candidate"]["keyword"]
-                scored = score_nurture_heuristic(
-                    item["candidate"],
-                    tiktok_gate=item["tiktok_gate"],
-                    weights=weights,
-                    keyword_type_filter=keyword_type_filter,
-                    batch_peer_flags=batch_risk.get(kw) or None,
+                chunk_finalize_rows.append(
+                    score_nurture_heuristic(
+                        item["candidate"],
+                        tiktok_gate=item["tiktok_gate"],
+                        weights=weights,
+                        keyword_type_filter=keyword_type_filter,
+                        batch_peer_flags=batch_risk.get(kw) or None,
+                        classifier_calibration=classifier_calibration,
+                    )
                 )
-                if scored:
-                    results.append(scored)
+            chunk_results, chunk_reroutes = split_finalize_results(chunk_finalize_rows)
+            results.extend(chunk_results)
+            reroutes.extend(chunk_reroutes)
             continue
 
         seen_keywords: set[str] = set()
-        chunk_results: List[Dict[str, Any]] = []
+        chunk_finalize_rows = []
         for row in llm_scores:
             keyword = str(row.get("keyword") or "").strip()
             item = lookup.get(keyword.lower())
             if not item:
                 continue
             seen_keywords.add(keyword.lower())
-            finalized = _finalize_nurture_llm_row(
-                item,
-                row,
-                weights=weights,
-                keyword_type_filter=keyword_type_filter,
-                batch_peer_flags=batch_risk.get(keyword) or None,
+            chunk_finalize_rows.append(
+                _finalize_nurture_llm_row(
+                    item,
+                    row,
+                    weights=weights,
+                    keyword_type_filter=keyword_type_filter,
+                    batch_peer_flags=batch_risk.get(keyword) or None,
+                    classifier_calibration=classifier_calibration,
+                )
             )
-            if finalized:
-                chunk_results.append(finalized)
 
+        chunk_results, chunk_reroutes = split_finalize_results(chunk_finalize_rows)
         chunk_results = enforce_batch_relevance_tiebreak(chunk_results)
         chunk_results = enforce_batch_spread(chunk_results)
         results.extend(chunk_results)
+        reroutes.extend(chunk_reroutes)
 
         for item in chunk:
             keyword = item["candidate"]["keyword"].lower()
             if keyword in seen_keywords:
                 continue
-            scored = score_nurture_heuristic(
-                item["candidate"],
-                tiktok_gate=item["tiktok_gate"],
-                weights=weights,
-                keyword_type_filter=keyword_type_filter,
-                batch_peer_flags=batch_risk.get(item["candidate"]["keyword"]) or None,
-            )
-            if scored:
-                results.append(scored)
+            chunk_finalize_rows = [
+                score_nurture_heuristic(
+                    item["candidate"],
+                    tiktok_gate=item["tiktok_gate"],
+                    weights=weights,
+                    keyword_type_filter=keyword_type_filter,
+                    batch_peer_flags=batch_risk.get(item["candidate"]["keyword"]) or None,
+                    classifier_calibration=classifier_calibration,
+                )
+            ]
+            fallback_results, fallback_reroutes = split_finalize_results(chunk_finalize_rows)
+            results.extend(fallback_results)
+            reroutes.extend(fallback_reroutes)
 
-    return results
+    if (
+        reroutes
+        and _reroute_depth < MAX_REROUTE_DEPTH
+        and should_accept_reroute("beta", keyword_type_filter)
+    ):
+        from videoscout.core_engine.keyword_scorer import score_beta_candidates_batch
+
+        results.extend(
+            await score_beta_candidates_batch(
+                reroute_items(reroutes),
+                db=db,
+                settings=settings,
+                keyword_type_filter=keyword_type_filter,
+                llm_client=llm_client,
+                _reroute_depth=_reroute_depth + 1,
+                classifier_calibration=classifier_calibration,
+            )
+        )
+
+    return [row for row in results if not is_reroute(row)]

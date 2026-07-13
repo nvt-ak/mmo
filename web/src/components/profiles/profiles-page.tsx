@@ -1,12 +1,12 @@
 "use client";
 
+import { EmptyState } from "@/components/shared/empty-state";
+import { PageHeader } from "@/components/shared/page-header";
+import { api } from "@/lib/api/client";
+import type { ProfileStage } from "@/lib/api/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
-import { api } from "@/lib/api/client";
-import type { ProfileStage } from "@/lib/api/types";
-import { EmptyState } from "@/components/shared/empty-state";
-import { PageHeader } from "@/components/shared/page-header";
 
 interface ProfilesPageProps {
   stage: ProfileStage;
@@ -59,8 +59,13 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
   });
 
   const toggleEligibleMutation = useMutation({
-    mutationFn: ({ id, beta_eligible }: { id: string; beta_eligible: boolean }) =>
-      api.updateProfile(id, { beta_eligible }),
+    mutationFn: ({
+      id,
+      beta_eligible,
+    }: {
+      id: string;
+      beta_eligible: boolean;
+    }) => api.updateProfile(id, { beta_eligible }),
     onSuccess: async () => {
       setNotice(null);
       await invalidate();
@@ -80,7 +85,8 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
   const actionError =
     (createMutation.isError && mutationError(createMutation.error)) ||
     (promoteMutation.isError && mutationError(promoteMutation.error)) ||
-    (toggleEligibleMutation.isError && mutationError(toggleEligibleMutation.error)) ||
+    (toggleEligibleMutation.isError &&
+      mutationError(toggleEligibleMutation.error)) ||
     (deleteMutation.isError && mutationError(deleteMutation.error)) ||
     null;
 
@@ -123,7 +129,9 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
           </label>
           <button
             type="submit"
-            disabled={createMutation.isPending || !label.trim() || !handle.trim()}
+            disabled={
+              createMutation.isPending || !label.trim() || !handle.trim()
+            }
             className="btn btn-primary"
           >
             {createMutation.isPending ? "Adding…" : "Add profile"}
@@ -132,7 +140,10 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
         {stage === "nurture" && (
           <p className="mt-3 text-xs text-(--muted)">
             Promote moves the account to{" "}
-            <Link href="/profiles/beta" className="underline hover:text-(--foreground)">
+            <Link
+              href="/profiles/beta"
+              className="underline hover:text-foreground"
+            >
               Beta profiles
             </Link>
             . Bulk post from pool is not wired yet (R7c).
@@ -159,31 +170,43 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
             {actionError}
           </div>
         )}
-        {isLoading && <p className="text-sm text-(--muted)">Loading profiles</p>}
+        {isLoading && (
+          <p className="text-sm text-(--muted)">Loading profiles</p>
+        )}
         {isError && (
           <div className="surface-card border-(--pastel-red-bg) bg-(--pastel-red-bg) px-4 py-3 text-sm text-(--pastel-red-text)">
             {(error as Error).message}
           </div>
         )}
         {!isLoading && !isError && items.length === 0 && (
-          <EmptyState title="No profiles" description="Add a TikTok account to get started." />
+          <EmptyState
+            title="No profiles"
+            description="Add a TikTok account to get started."
+          />
         )}
         {items.length > 0 && (
-          <div className="surface-card overflow-hidden">
-            <table className="w-full border-collapse text-left text-sm">
+          <div className="data-panel overflow-hidden">
+            <table className="data-table w-full min-w-0 border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-(--border) bg-(--surface-muted) text-xs uppercase text-(--muted)">
                   <th className="px-4 py-3">Label</th>
                   <th className="px-4 py-3">Handle</th>
-                  {stage === "nurture" && <th className="px-4 py-3">Beta ready</th>}
+                  {stage === "nurture" && (
+                    <th className="px-4 py-3">Beta ready</th>
+                  )}
                   <th className="px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((p) => (
-                  <tr key={p.id} className="border-b border-(--border-subtle) last:border-b-0">
+                  <tr
+                    key={p.id}
+                    className="border-b border-(--border-subtle) last:border-b-0"
+                  >
                     <td className="px-4 py-3.5 font-medium">{p.label}</td>
-                    <td className="px-4 py-3.5 font-mono text-xs">@{p.handle.replace(/^@/, "")}</td>
+                    <td className="px-4 py-3.5 font-mono text-xs">
+                      @{p.handle.replace(/^@/, "")}
+                    </td>
                     {stage === "nurture" && (
                       <td className="px-4 py-3.5">
                         <input
@@ -205,7 +228,9 @@ export function ProfilesPage({ stage }: ProfilesPageProps) {
                           <button
                             type="button"
                             className="btn btn-secondary px-2 py-1 text-xs"
-                            disabled={!p.beta_eligible || promoteMutation.isPending}
+                            disabled={
+                              !p.beta_eligible || promoteMutation.isPending
+                            }
                             title={
                               p.beta_eligible
                                 ? "Move to beta profiles list"

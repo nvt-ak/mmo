@@ -66,7 +66,7 @@ function Chevron({ open }: { open: boolean }) {
     <svg
       viewBox="0 0 16 16"
       aria-hidden
-      className={`h-3 w-3 shrink-0 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+      className={`h-3.5 w-3.5 shrink-0 text-(--muted) transition-transform duration-200 ${open ? "rotate-90" : ""}`}
     >
       <path
         d="M6 4l4 4-4 4"
@@ -106,54 +106,53 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="relative z-10 flex min-h-screen text-foreground">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-(--border) bg-(--surface) px-4 py-8">
-        <div className="mb-10 px-2">
-          <p className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-(--muted)">
-            VideoScout
-          </p>
-          <h1 className="font-editorial mt-2 text-2xl leading-none text-(--foreground-strong)">
+    <div className="relative flex min-h-screen text-foreground">
+      <aside className="flex w-[15rem] shrink-0 flex-col border-r border-(--border) bg-(--surface)">
+        <div className="border-b border-(--border) px-5 py-6">
+          <p className="font-mono text-[0.65rem] tracking-wide text-(--muted)">VideoScout</p>
+          <h1 className="font-editorial mt-1.5 text-[1.625rem] font-medium leading-none text-(--foreground-strong)">
             Operator
           </h1>
         </div>
-        <nav className="flex flex-1 flex-col gap-1">
+
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
           {NAV_GROUPS.map((group) => {
             const open = isGroupOpen(group.label);
             const groupActive = isGroupActive(pathname, group);
 
             return (
-              <div key={group.label}>
+              <div key={group.label} className="mb-1">
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.label)}
                   aria-expanded={open}
-                  className={`flex w-full items-center justify-between rounded-sm px-3 py-2 text-left transition-colors ${
+                  className={`flex w-full min-w-0 items-center justify-between rounded-(--radius-sm) px-2.5 py-2 text-left transition-colors ${
                     groupActive
                       ? "text-(--foreground-strong)"
                       : "text-(--muted) hover:bg-(--surface-muted) hover:text-foreground"
                   }`}
                 >
-                  <span className="font-mono text-[0.6rem] uppercase tracking-[0.12em]">
-                    {group.label}
-                  </span>
+                  <span className="text-xs font-medium">{group.label}</span>
                   <Chevron open={open} />
                 </button>
                 {open && (
-                  <div className="mt-0.5 flex flex-col gap-0.5 pb-2 pl-1">
+                  <div className="mt-0.5 flex flex-col gap-px pb-1">
                     {group.items.map((item) => {
                       const active = isItemActive(pathname, item.href);
                       return (
                         <Link
                           key={item.href}
                           href={item.href}
-                          className={`rounded-sm px-3 py-2 transition-colors ${
+                          className={`relative rounded-(--radius-sm) py-2 pl-3 pr-2.5 transition-colors ${
                             active
-                              ? "bg-(--surface-muted) text-(--foreground-strong)"
+                              ? "nav-link-active"
                               : "text-(--muted) hover:bg-(--surface-muted) hover:text-foreground"
                           }`}
                         >
-                          <span className="block text-sm font-medium">{item.label}</span>
-                          <span className="block text-xs leading-snug opacity-80">{item.desc}</span>
+                          <span className="block text-sm font-medium leading-tight">{item.label}</span>
+                          <span className="mt-0.5 block text-xs leading-snug text-(--muted)">
+                            {item.desc}
+                          </span>
                         </Link>
                       );
                     })}
@@ -163,8 +162,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <p className="px-2 font-mono text-[0.65rem] text-(--muted)">localhost:8000</p>
+
+        <div className="border-t border-(--border) px-5 py-4">
+          <p className="flex items-center gap-2 font-mono text-[0.65rem] text-(--muted)">
+            <span
+              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-(--pastel-green-text)"
+              aria-hidden
+            />
+            API localhost:8000
+          </p>
+        </div>
       </aside>
+
       <main className="flex min-w-0 flex-1 flex-col bg-background">{children}</main>
     </div>
   );

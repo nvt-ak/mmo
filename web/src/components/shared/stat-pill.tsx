@@ -1,12 +1,3 @@
-type StatTone = "neutral" | "green" | "yellow" | "blue";
-
-const TONE_CLASS: Record<StatTone, string> = {
-  neutral: "tag-pill bg-(--surface-muted) text-(--muted)",
-  green: "tag-pill tag-green",
-  yellow: "tag-pill tag-yellow",
-  blue: "tag-pill tag-blue",
-};
-
 export function StatPill({
   label,
   value,
@@ -14,12 +5,21 @@ export function StatPill({
 }: {
   label: string;
   value: number | string;
-  tone?: StatTone;
+  tone?: "neutral" | "green" | "yellow" | "blue";
 }) {
+  const toneClass =
+    tone === "green"
+      ? "tag-pill tag-green"
+      : tone === "yellow"
+        ? "tag-pill tag-yellow"
+        : tone === "blue"
+          ? "tag-pill tag-blue"
+          : "tag-pill bg-(--surface-muted) text-(--muted)";
+
   return (
-    <div className="text-right">
-      <p className="text-[0.65rem] uppercase tracking-wider text-(--muted)">{label}</p>
-      <p className={`mt-1 inline-flex ${TONE_CLASS[tone]}`}>{value}</p>
+    <div>
+      <p className="text-[0.65rem] font-medium text-(--muted)">{label}</p>
+      <p className={`mt-1 inline-flex font-mono text-sm ${toneClass}`}>{value}</p>
     </div>
   );
 }

@@ -87,6 +87,16 @@ def batch_score_std(results: List[Dict[str, Any]]) -> float:
     return statistics.pstdev(scores)
 
 
+def batch_relevance_std(results: List[Dict[str, Any]]) -> float:
+    if len(results) < 2:
+        return 0.0
+    relevances = [
+        float((r.get("component_scores") or {}).get("relevance", 0.0))
+        for r in results
+    ]
+    return statistics.pstdev(relevances)
+
+
 def _heuristic_rank_score(rank: int, total: int) -> float:
     if total <= 1:
         return round((BATCH_STRETCH_MIN + BATCH_STRETCH_MAX) / 2, 3)
@@ -140,10 +150,12 @@ def enforce_batch_relevance_tiebreak(results: List[Dict[str, Any]]) -> List[Dict
 
 
 def enforce_batch_spread(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Rescale flat batches using heuristic rank when std dev is too low."""
+    """Rescale flat batches when final scores AND relevance both look lazy-clustered."""
     if len(results) < 2:
         return results
     if batch_score_std(results) >= BATCH_MIN_STD:
+        return results
+    if batch_relevance_std(results) >= RELEVANCE_TIEBREAK_EPS:
         return results
 
     ranked: List[tuple[Dict[str, Any], float]] = []

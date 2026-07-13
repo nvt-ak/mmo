@@ -73,6 +73,12 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
   const rubrics = initial.scoring_rubrics;
   const rubricsFromApi = initial.rubrics_available === true;
   const [weights, setWeights] = useState(initial.weights);
+  const [minScoreThreshold, setMinScoreThreshold] = useState(
+    initial.filters.min_score_threshold ?? 0.55,
+  );
+  const [minSpecificity, setMinSpecificity] = useState(
+    initial.filters.min_specificity ?? 0.4,
+  );
   const [topics, setTopics] = useState(initial.niche.topics.join(", "));
   const [nurtureRubric, setNurtureRubric] = useState(rubrics.nurture.text);
   const [betaRubric, setBetaRubric] = useState(rubrics.beta.text);
@@ -106,6 +112,10 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
     mutationFn: () =>
       api.updateSettings({
         weights,
+        filters: {
+          min_score_threshold: minScoreThreshold,
+          min_specificity: minSpecificity,
+        },
         niche: {
           topics: topics.split(",").map((t) => t.trim()).filter(Boolean),
           preferred_language: initial.niche.preferred_language,
@@ -131,7 +141,7 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
 
   return (
     <div className="space-y-6">
-      <section className="surface-card p-6 animate-fade-rise">
+      <section className="panel-section p-6">
         <h2 className="font-editorial text-xl text-(--foreground-strong)">Scoring weights</h2>
         <p className="mt-1 text-sm text-(--muted)">
           Agent ranking blend. Total: {weightSum.toFixed(2)}
@@ -159,7 +169,54 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
         </div>
       </section>
 
-      <section className="surface-card p-6 animate-fade-rise">
+      <section className="panel-section p-6">
+        <h2 className="font-editorial text-xl text-(--foreground-strong)">Inbox gates</h2>
+        <p className="mt-1 text-sm text-(--muted)">
+          Discovery saves at most 10 keywords per run; only rows passing these floors
+          are written to the inbox.
+        </p>
+        <div className="mt-5 space-y-5">
+          <label className="block">
+            <div className="flex justify-between text-sm">
+              <span className="text-foreground">Minimum win score (beta)</span>
+              <span className="font-mono text-(--muted)">
+                {Math.round(minScoreThreshold * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0.4}
+              max={0.85}
+              step={0.05}
+              value={minScoreThreshold}
+              onChange={(e) => setMinScoreThreshold(Number(e.target.value))}
+              className="mt-2 w-full accent-(--foreground-strong)"
+            />
+          </label>
+          <label className="block">
+            <div className="flex justify-between text-sm">
+              <span className="text-foreground">Minimum specificity (beta)</span>
+              <span className="font-mono text-(--muted)">
+                {Math.round(minSpecificity * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0.3}
+              max={0.9}
+              step={0.05}
+              value={minSpecificity}
+              onChange={(e) => setMinSpecificity(Number(e.target.value))}
+              className="mt-2 w-full accent-(--foreground-strong)"
+            />
+          </label>
+          <p className="text-xs text-(--muted)">
+            Beta keywords also require relevance ≥ 30%. Nurture uses a lower score floor.
+          </p>
+        </div>
+      </section>
+
+      <section className="panel-section p-6">
         <h2 className="font-editorial text-xl text-(--foreground-strong)">Niche topics</h2>
         <p className="mt-1 text-sm text-(--muted)">Comma-separated focus areas for scans.</p>
         <input
@@ -183,7 +240,7 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
         )}
       </section>
 
-      <section className="surface-card p-6 animate-fade-rise">
+      <section className="panel-section p-6">
         <h2 className="font-editorial text-xl text-(--foreground-strong)">Scoring instructions</h2>
         <p className="mt-1 text-sm text-(--muted)">
           Runtime rubrics sent to the LLM when ranking keywords during discovery.
@@ -232,7 +289,7 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
         </div>
       </section>
 
-      <section className="surface-card p-6 animate-fade-rise">
+      <section className="panel-section p-6">
         <h2 className="font-editorial text-xl text-(--foreground-strong)">OpenAI / LLM</h2>
         <p className="mt-1 text-sm text-(--muted)">
           Override API endpoint and key. DB values take precedence over environment.
@@ -301,7 +358,7 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
         </div>
       </section>
 
-      <section className="surface-card p-6 animate-fade-rise">
+      <section className="panel-section p-6">
         <h2 className="font-editorial text-xl text-(--foreground-strong)">Integrations</h2>
         <dl className="mt-4 space-y-3 text-sm">
           <div className="flex items-center justify-between border-b border-(--border-subtle) pb-3">

@@ -56,6 +56,10 @@ Active stories for VideoScout. Create story packets before implementation
 | US-065 | Search-sample evidence + validation pass (Sprint 4, ADR 0014) | E09 | normal | implemented |
 | US-068 | Discovery job cancel + force restart *(renumbered from US-059)* | E09 | tiny | implemented |
 | US-069 | Keyword scoring diversity + platform insights *(renumbered from US-060)* | E09 | normal | implemented |
+| US-070 | Reclassify reroute (discovery recall fix) | E09 | tiny | implemented |
+| US-071 | Scoring reliability (beta heuristic + validation) | E09 | normal | implemented |
+| US-072 | Classifier v2 calibration from performance reports | E09 | normal | implemented |
+| US-073 | Discovery inbox qualification gates | E09 | tiny | implemented |
 | US-066 | Trend Cluster — duplicate keyword grouping (Phase 2) | E09 | normal | implemented |
 
 ## Roadmap Phases

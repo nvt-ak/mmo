@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from videoscout.core_engine.trend_discovery import build_scored_candidate
+from videoscout.core_engine.scoring_reroute import is_reroute
 from videoscout.db.models import DiscoveryJobModel, SuggestionModel
 
 
@@ -352,7 +353,7 @@ async def test_trend_discovery_worker_upserts(db_session, mock_trending):
                 tiktok_gate=item["tiktok_gate"],
                 keyword_type_filter=keyword_type_filter,
             )
-            if row:
+            if row and not is_reroute(row):
                 scored.append(row)
         return scored
 

@@ -1,18 +1,24 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useState, Fragment } from "react";
-import { api } from "@/lib/api/client";
-import type { RejectReason, Suggestion, SuggestionStatus, KeywordType, KeywordTypeFilter } from "@/lib/api/types";
 import { ActionBar } from "@/components/shared/action-bar";
 import { EmptyState } from "@/components/shared/empty-state";
+import { useKeywordScan } from "@/components/shared/keyword-scan-button";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScoreBadge } from "@/components/shared/score-badge";
-import { useKeywordScan } from "@/components/shared/keyword-scan-button";
 import { TabBar } from "@/components/shared/tab-bar";
-import { SuggestionInsightPanel } from "./suggestion-insight-panel";
+import { api } from "@/lib/api/client";
+import type {
+  KeywordType,
+  KeywordTypeFilter,
+  RejectReason,
+  Suggestion,
+  SuggestionStatus,
+} from "@/lib/api/types";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { RejectModal } from "./reject-modal";
 import { ReportDialog } from "./report-dialog";
+import { SuggestionInsightPanel } from "./suggestion-insight-panel";
 
 const TABS: { status: SuggestionStatus; label: string }[] = [
   { status: "pending", label: "Pending" },
@@ -41,7 +47,9 @@ export function InboxPage({
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<Suggestion | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [expandedClusters, setExpandedClusters] = useState<Set<string>>(new Set());
+  const [expandedClusters, setExpandedClusters] = useState<Set<string>>(
+    new Set(),
+  );
 
   const queryKey = ["suggestions", keywordType, status, search];
 
@@ -52,12 +60,15 @@ export function InboxPage({
         status,
         keyword_type: keywordType,
         limit: 100,
+        sort: keywordType === "beta" ? "final_score" : "created_at",
+        order: "desc",
         search: search || undefined,
       }),
     refetchInterval: 30_000,
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["suggestions"] });
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["suggestions"] });
 
   const approveMutation = useMutation({
     mutationFn: (ids: string[]) => api.bulkApprove(ids),
@@ -68,8 +79,11 @@ export function InboxPage({
   });
 
   const rejectMutation = useMutation({
-    mutationFn: (payload: { keyword_ids: string[]; reason: RejectReason; note?: string }) =>
-      api.bulkReject(payload),
+    mutationFn: (payload: {
+      keyword_ids: string[];
+      reason: RejectReason;
+      note?: string;
+    }) => api.bulkReject(payload),
     onSuccess: () => {
       setSelected(new Set());
       setRejectOpen(false);
@@ -218,13 +232,13 @@ export function InboxPage({
       />
 
       {discovery.status && (
-        <div className="border-b border-(--border) bg-(--surface-muted)/40 px-8 py-3">
+        <div className="border-b border-(--border) bg-(--surface-muted)/40 px-6 py-3 md:px-8">
           <div className="max-w-xl">{discovery.status}</div>
         </div>
       )}
 
       {isFetching && !isLoading && (
-        <p className="border-b border-(--border) px-8 py-2 font-mono text-xs text-(--muted)">
+        <p className="border-b border-(--border) px-6 py-2 font-mono text-xs text-(--muted) md:px-8">
           Syncing inbox
         </p>
       )}
@@ -249,7 +263,7 @@ export function InboxPage({
         </ActionBar>
       )}
 
-      <div className="flex-1 overflow-auto px-8 py-6">
+      <div className="flex-1 overflow-auto px-6 py-6 md:px-8">
         {isLoading && (
           <p className="text-sm text-(--muted)">Loading suggestions</p>
         )}
@@ -266,10 +280,10 @@ export function InboxPage({
         )}
 
         {items.length > 0 && (
-          <div className="surface-card overflow-hidden animate-fade-rise">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+          <div className="data-panel overflow-hidden">
+            <table className="data-table w-full min-w-0 border-collapse text-left text-sm">
               <thead>
-                <tr className="border-b border-(--border) bg-(--surface-muted) text-xs uppercase tracking-wider text-(--muted)">
+                <tr>
                   {status === "pending" && (
                     <th className="w-10 px-4 py-3">
                       <input
@@ -288,111 +302,124 @@ export function InboxPage({
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map(({ item, clusterMeta }, index) => {
+                {visibleRows.map(({ item, clusterMeta }) => {
                   const expanded = expandedId === item.id;
                   return (
-                  <Fragment key={item.id}>
-                  <tr
-                    className={`stagger-item border-b border-(--border-subtle) last:border-b-0 hover:bg-(--surface-muted)/60${
-                      clusterMeta?.isChild ? " bg-(--surface-muted)/30" : ""
-                    }`}
-                    style={{ ["--stagger-index" as string]: index }}
-                  >
-                    {status === "pending" && (
-                      <td className="px-4 py-3.5">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(item.id)}
-                          onChange={() => toggleOne(item.id)}
-                          aria-label={`Select ${item.keyword}`}
-                        />
-                      </td>
-                    )}
-                    <td className="max-w-md px-4 py-3.5 font-medium text-(--foreground-strong)">
-                      <div className={clusterMeta?.isChild ? "pl-6" : undefined}>
-                        {item.keyword}
-                        {clusterMeta && !clusterMeta.isChild && clusterMeta.count > 1 && (
+                    <Fragment key={item.id}>
+                      <tr
+                        className={
+                          clusterMeta?.isChild
+                            ? "bg-(--surface-muted)/30"
+                            : undefined
+                        }
+                      >
+                        {status === "pending" && (
+                          <td className="px-4 py-3.5">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(item.id)}
+                              onChange={() => toggleOne(item.id)}
+                              aria-label={`Select ${item.keyword}`}
+                            />
+                          </td>
+                        )}
+                        <td className="max-w-md px-4 py-3.5 font-medium text-(--foreground-strong)">
+                          <div
+                            className={
+                              clusterMeta?.isChild ? "pl-6" : undefined
+                            }
+                          >
+                            {item.keyword}
+                            {clusterMeta &&
+                              !clusterMeta.isChild &&
+                              clusterMeta.count > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedClusters((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(clusterMeta.id))
+                                        next.delete(clusterMeta.id);
+                                      else next.add(clusterMeta.id);
+                                      return next;
+                                    })
+                                  }
+                                  className="ml-2 rounded-sm bg-(--pastel-blue-bg) px-1.5 py-0.5 font-mono text-[0.65rem] uppercase text-(--pastel-blue-text)"
+                                >
+                                  {clusterMeta.expanded
+                                    ? `${clusterMeta.count} variants`
+                                    : `+${clusterMeta.count - 1} variants`}
+                                </button>
+                              )}
+                            {item.tiktok_unverified && (
+                              <span className="ml-2 rounded-sm bg-(--pastel-amber-bg) px-1.5 py-0.5 font-mono text-[0.65rem] uppercase text-(--pastel-amber-text)">
+                                unverified
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <ScoreBadge score={item.final_score} />
+                        </td>
+                        <td className="px-4 py-3.5 capitalize text-(--muted)">
+                          {item.tiktok_status ?? "—"}
+                          {item.tiktok_count_at_suggest != null && (
+                            <span className="font-mono text-xs">
+                              {" "}
+                              ({item.tiktok_count_at_suggest})
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 font-mono text-xs text-(--muted)">
+                          {new Date(item.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3.5">
                           <button
                             type="button"
                             onClick={() =>
-                              setExpandedClusters((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(clusterMeta.id)) next.delete(clusterMeta.id);
-                                else next.add(clusterMeta.id);
-                                return next;
-                              })
+                              setExpandedId((prev) =>
+                                prev === item.id ? null : item.id,
+                              )
                             }
-                            className="ml-2 rounded-(--radius-sm) bg-(--pastel-blue-bg) px-1.5 py-0.5 font-mono text-[0.65rem] uppercase text-(--pastel-blue-text)"
+                            className="btn btn-ghost px-2 py-1 text-(--muted)"
                           >
-                            {clusterMeta.expanded
-                              ? `${clusterMeta.count} variants`
-                              : `+${clusterMeta.count - 1} variants`}
+                            {expanded ? "Hide" : "Insights"}
                           </button>
-                        )}
-                        {item.tiktok_unverified && (
-                          <span className="ml-2 rounded-(--radius-sm) bg-(--pastel-amber-bg) px-1.5 py-0.5 font-mono text-[0.65rem] uppercase text-(--pastel-amber-text)">
-                            unverified
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <ScoreBadge score={item.final_score} />
-                    </td>
-                    <td className="px-4 py-3.5 capitalize text-(--muted)">
-                      {item.tiktok_status ?? "—"}
-                      {item.tiktok_count_at_suggest != null && (
-                        <span className="font-mono text-xs">
-                          {" "}
-                          ({item.tiktok_count_at_suggest})
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5 font-mono text-xs text-(--muted)">
-                      {new Date(item.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedId((prev) => (prev === item.id ? null : item.id))
-                        }
-                        className="btn btn-ghost px-2 py-1 text-(--muted)"
-                      >
-                        {expanded ? "Hide" : "Insights"}
-                      </button>
-                      {status === "approved" && (
-                        <button
-                          type="button"
-                          onClick={() => setReportTarget(item)}
-                          className="btn btn-ghost px-2 py-1 text-(--pastel-green-text)"
+                          {status === "approved" && (
+                            <button
+                              type="button"
+                              onClick={() => setReportTarget(item)}
+                              className="btn btn-ghost px-2 py-1 text-(--pastel-green-text)"
+                            >
+                              Report
+                            </button>
+                          )}
+                          {status === "reported" && (
+                            <button
+                              type="button"
+                              onClick={() => improveMutation.mutate(item.id)}
+                              disabled={improveMutation.isPending}
+                              className="btn btn-ghost px-2 py-1 text-(--pastel-blue-text) disabled:opacity-50"
+                            >
+                              Improve
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {expanded && (
+                        <tr
+                          key={`${item.id}-insights`}
+                          className="border-b border-(--border-subtle)"
                         >
-                          Report
-                        </button>
+                          <td
+                            colSpan={status === "pending" ? 6 : 5}
+                            className="p-0"
+                          >
+                            <SuggestionInsightPanel suggestion={item} />
+                          </td>
+                        </tr>
                       )}
-                      {status === "reported" && (
-                        <button
-                          type="button"
-                          onClick={() => improveMutation.mutate(item.id)}
-                          disabled={improveMutation.isPending}
-                          className="btn btn-ghost px-2 py-1 text-(--pastel-blue-text) disabled:opacity-50"
-                        >
-                          Improve
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                  {expanded && (
-                    <tr key={`${item.id}-insights`} className="border-b border-(--border-subtle)">
-                      <td
-                        colSpan={status === "pending" ? 6 : 5}
-                        className="p-0"
-                      >
-                        <SuggestionInsightPanel suggestion={item} />
-                      </td>
-                    </tr>
-                  )}
-                  </Fragment>
+                    </Fragment>
                   );
                 })}
               </tbody>

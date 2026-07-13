@@ -236,7 +236,7 @@ class SettingsModel(Base):
     weight_video_performance = Column(Float, default=0.10)
     
     # Filters
-    min_score_threshold = Column(Float, default=0.4)
+    min_score_threshold = Column(Float, default=0.55)
     min_specificity = Column(Float, default=0.4)
     min_saturation = Column(Float, default=0.3)
     max_suggestions_per_video = Column(Integer, default=20)

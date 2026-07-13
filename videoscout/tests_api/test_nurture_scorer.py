@@ -306,6 +306,7 @@ def test_enforce_batch_spread_stretches_flat_scores():
             {
                 "keyword": f"kw{i}",
                 "final_score": score,
+                "component_scores": {"relevance": 0.82},
                 "platform_signals": {
                     "agent": {
                         "blend": {
@@ -320,6 +321,28 @@ def test_enforce_batch_spread_stretches_flat_scores():
     assert batch_score_std(stretched) >= BATCH_MIN_STD
     assert stretched[-1]["final_score"] > stretched[0]["final_score"]
     assert stretched[0]["platform_signals"]["agent"]["blend"]["spread_enforced"] is True
+
+
+def test_enforce_batch_spread_skips_when_relevance_spreads():
+    varied_rows = []
+    for i, score in enumerate([0.84, 0.85, 0.84, 0.85]):
+        varied_rows.append(
+            {
+                "keyword": f"kw{i}",
+                "final_score": score,
+                "component_scores": {"relevance": 0.70 + i * 0.08},
+                "platform_signals": {
+                    "agent": {
+                        "blend": {
+                            "heuristic_final": 0.50 + i * 0.12,
+                        }
+                    }
+                },
+            }
+        )
+
+    unchanged = enforce_batch_spread(varied_rows)
+    assert unchanged == varied_rows
 
 
 def test_schradin_golden_heuristic_components():

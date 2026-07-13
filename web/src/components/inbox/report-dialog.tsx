@@ -26,7 +26,7 @@ export function ReportDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <form
-        className="surface-card w-full max-w-lg p-6 animate-fade-rise"
+        className="surface-card w-full max-w-lg p-6"
         onSubmit={(e) => {
           e.preventDefault();
           const fd = new FormData(e.currentTarget);

@@ -149,28 +149,39 @@ async def test_score_beta_caps_saturated_component(db_session):
 async def test_score_beta_blend_when_few_reports(db_session):
     keyword = "beta long tail keyword phrase"
     gate = _tiktok_gate()
+    candidate = _candidate(keyword=keyword)
     llm = _mock_llm(_batch_llm_response([keyword]))
-
-    llm_final = weighted_final_score(_llm_response()["component_scores"], {
+    weights = {
         "relevance": 0.30,
         "specificity": 0.25,
         "saturation": 0.25,
         "trend": 0.10,
         "video_performance": 0.10,
-    })
-    heuristic_final = heuristic_final_score(keyword, gate)
-    expected = round(BLEND_LLM_WEIGHT * llm_final + BLEND_HEURISTIC_WEIGHT * heuristic_final, 3)
+    }
+    heuristic_final = heuristic_final_score(
+        keyword,
+        gate,
+        candidate=candidate,
+        weights=weights,
+    )
 
     scored = await score_beta_candidate(
-        _candidate(keyword=keyword),
+        candidate,
         tiktok_gate=gate,
         db=db_session,
         llm_client=llm,
     )
 
     assert scored is not None
+    blend = scored["trend_signals"]["scoring"]["blend"]
+    expected = round(
+        blend["llm_weight"] * blend["llm_final"]
+        + blend["heuristic_weight"] * heuristic_final,
+        3,
+    )
     assert scored["final_score"] == expected
-    assert scored["trend_signals"]["scoring"]["blend"]["linked_beta_reports"] == 0
+    assert blend["linked_beta_reports"] == 0
+    assert blend["heuristic_weight"] == BLEND_HEURISTIC_WEIGHT
 
 
 @pytest.mark.asyncio

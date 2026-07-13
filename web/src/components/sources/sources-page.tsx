@@ -1,12 +1,12 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { api } from "@/lib/api/client";
 import { EmptyState } from "@/components/shared/empty-state";
 import { KeywordScanButton } from "@/components/shared/keyword-scan-button";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatPill } from "@/components/shared/stat-pill";
+import { api } from "@/lib/api/client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 export function SourcesPage() {
   const queryClient = useQueryClient();
@@ -18,7 +18,8 @@ export function SourcesPage() {
     queryFn: () => api.listChannels(),
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["channels"] });
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["channels"] });
 
   const addMutation = useMutation({
     mutationFn: () => api.addChannel(channelInput.trim()),
@@ -54,7 +55,11 @@ export function SourcesPage() {
             <div className="flex flex-wrap items-center gap-6">
               <div className="flex flex-wrap gap-6">
                 <StatPill label="Channels" value={data.total} tone="blue" />
-                <StatPill label="Scan enabled" value={enabledCount} tone="green" />
+                <StatPill
+                  label="Scan enabled"
+                  value={enabledCount}
+                  tone="green"
+                />
               </div>
               <KeywordScanButton variant="secondary" showStatus={false} />
             </div>
@@ -66,13 +71,15 @@ export function SourcesPage() {
 
       <div className="space-y-6 px-8 py-6">
         {message && (
-          <p className="surface-card bg-(--surface-muted) px-4 py-2 text-sm text-(--foreground)">
+          <p className="surface-card bg-(--surface-muted) px-4 py-2 text-sm text-foreground">
             {message}
           </p>
         )}
 
-        <section className="surface-card p-6 animate-fade-rise">
-          <h2 className="font-editorial text-xl text-(--foreground-strong)">Add channel</h2>
+        <section className="panel-section p-6">
+          <h2 className="font-editorial text-xl text-(--foreground-strong)">
+            Add channel
+          </h2>
           <p className="mt-1 text-sm text-(--muted)">
             Handle, channel ID, or full YouTube URL.
           </p>
@@ -94,7 +101,9 @@ export function SourcesPage() {
           </div>
         </section>
 
-        {isLoading && <p className="text-sm text-(--muted)">Loading channels</p>}
+        {isLoading && (
+          <p className="text-sm text-(--muted)">Loading channels</p>
+        )}
         {isError && (
           <div className="surface-card bg-(--pastel-red-bg) px-4 py-3 text-sm text-(--pastel-red-text)">
             {(error as Error).message}
@@ -109,8 +118,8 @@ export function SourcesPage() {
         )}
 
         {channels.length > 0 && (
-          <div className="surface-card overflow-hidden animate-fade-rise">
-            <table className="w-full text-left text-sm">
+          <div className="data-panel overflow-hidden">
+            <table className="data-table w-full min-w-0 text-left text-sm">
               <thead className="border-b border-(--border) bg-(--surface-muted) text-xs uppercase tracking-wider text-(--muted)">
                 <tr>
                   <th className="px-4 py-3 font-medium">Channel</th>
@@ -124,14 +133,16 @@ export function SourcesPage() {
                 {channels.map((ch, index) => (
                   <tr
                     key={ch.id}
-                    className="stagger-item border-b border-(--border-subtle) last:border-b-0"
+                    className="border-b border-(--border-subtle) last:border-b-0"
                     style={{ ["--stagger-index" as string]: index }}
                   >
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-(--foreground-strong)">
                         {ch.name || ch.channel_id}
                       </p>
-                      <p className="font-mono text-xs text-(--muted)">{ch.channel_id}</p>
+                      <p className="font-mono text-xs text-(--muted)">
+                        {ch.channel_id}
+                      </p>
                     </td>
                     <td className="px-4 py-3.5">
                       <button
@@ -143,7 +154,9 @@ export function SourcesPage() {
                           })
                         }
                         className={`tag-pill ${
-                          ch.scan_enabled ? "tag-green" : "bg-(--surface-muted) text-(--muted)"
+                          ch.scan_enabled
+                            ? "tag-green"
+                            : "bg-(--surface-muted) text-(--muted)"
                         }`}
                       >
                         {ch.scan_enabled ? "Enabled" : "Disabled"}

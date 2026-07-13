@@ -71,7 +71,7 @@ export function InsightsPage() {
         {data && (
           <>
             {data.summary_metrics && (
-              <section className="surface-card p-6 lg:col-span-2 animate-fade-rise">
+              <section className="panel-section p-6 lg:col-span-2">
                 <h2 className="font-editorial text-xl text-(--foreground-strong)">Summary</h2>
                 <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                   {Object.entries(data.summary_metrics).map(([key, val]) => (
@@ -88,7 +88,7 @@ export function InsightsPage() {
               </section>
             )}
 
-            <section className="surface-card p-6 animate-fade-rise">
+            <section className="panel-section p-6">
               <h2 className="font-editorial text-xl text-(--foreground-strong)">
                 Rejection patterns
               </h2>
@@ -99,7 +99,7 @@ export function InsightsPage() {
                 {(data.rejection_patterns ?? []).map((p, index) => (
                   <li
                     key={p.reason}
-                    className="stagger-item border-b border-(--border-subtle) pb-3 last:border-b-0"
+                    className="border-b border-(--border-subtle) pb-3 last:border-b-0"
                     style={{ ["--stagger-index" as string]: index }}
                   >
                     <div className="flex items-center gap-2">
@@ -114,7 +114,7 @@ export function InsightsPage() {
               </ul>
             </section>
 
-            <section className="surface-card p-6 animate-fade-rise">
+            <section className="panel-section p-6">
               <h2 className="font-editorial text-xl text-(--foreground-strong)">
                 Success patterns
               </h2>
@@ -125,7 +125,7 @@ export function InsightsPage() {
                 {(data.success_patterns ?? []).map((p, index) => (
                   <li
                     key={p.keyword_example}
-                    className="stagger-item rounded-(--radius-sm) bg-(--pastel-green-bg) px-4 py-3"
+                    className="rounded-(--radius-sm) bg-(--pastel-green-bg) px-4 py-3"
                     style={{ ["--stagger-index" as string]: index }}
                   >
                     <p className="font-medium text-(--foreground-strong)">{p.keyword_example}</p>
@@ -141,7 +141,7 @@ export function InsightsPage() {
               </ul>
             </section>
 
-            <section className="surface-card overflow-hidden lg:col-span-2 animate-fade-rise">
+            <section className="data-panel overflow-hidden lg:col-span-2">
               <div className="border-b border-(--border) px-6 py-4">
                 <h2 className="font-editorial text-xl text-(--foreground-strong)">
                   Recent experiments
@@ -172,7 +172,7 @@ export function InsightsPage() {
                 )}
 
               {recentExperiments.length > 0 && (
-                <table className="w-full text-left text-sm">
+                <table className="data-table w-full min-w-0 text-left text-sm">
                   <thead className="border-b border-(--border) bg-(--surface-muted) text-xs uppercase tracking-wider text-(--muted)">
                     <tr>
                       <th className="px-4 py-3 font-medium">Keyword</th>
@@ -186,7 +186,7 @@ export function InsightsPage() {
                     {recentExperiments.map((item, index) => (
                       <tr
                         key={item.id}
-                        className="stagger-item border-b border-(--border-subtle) last:border-b-0"
+                        className="border-b border-(--border-subtle) last:border-b-0"
                         style={{ ["--stagger-index" as string]: index }}
                       >
                         <td className="px-4 py-3.5 font-medium text-(--foreground-strong)">

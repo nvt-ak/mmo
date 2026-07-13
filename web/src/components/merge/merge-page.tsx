@@ -1,13 +1,13 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { api } from "@/lib/api/client";
-import type { BatchVideoAsset, MergeJob } from "@/lib/api/types";
 import { ActionBar } from "@/components/shared/action-bar";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatPill } from "@/components/shared/stat-pill";
+import { api } from "@/lib/api/client";
+import type { BatchVideoAsset, MergeJob } from "@/lib/api/types";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 function formatDuration(sec?: number) {
   if (!sec) return "—";
@@ -81,15 +81,25 @@ export function MergePage() {
         description="Combine two kept clips into one final file under data/finals/."
         meta={
           <div className="flex flex-wrap gap-6">
-            <StatPill label="Pool" value={poolQuery.data?.total ?? 0} tone="blue" />
-            <StatPill label="Finals" value={finalsQuery.data?.total ?? 0} tone="green" />
+            <StatPill
+              label="Pool"
+              value={poolQuery.data?.total ?? 0}
+              tone="blue"
+            />
+            <StatPill
+              label="Finals"
+              value={finalsQuery.data?.total ?? 0}
+              tone="green"
+            />
           </div>
         }
         actions={
           <button
             type="button"
             onClick={() => randomMutation.mutate()}
-            disabled={randomMutation.isPending || (poolQuery.data?.total ?? 0) < 2}
+            disabled={
+              randomMutation.isPending || (poolQuery.data?.total ?? 0) < 2
+            }
             className="btn btn-secondary"
           >
             Random same-keyword pair
@@ -117,7 +127,9 @@ export function MergePage() {
           </span>
           <p className="mt-1 text-(--foreground-strong)">
             {lastJob.status}
-            {lastJob.final_video_id ? ` · final ${lastJob.final_video_id.slice(0, 8)}` : ""}
+            {lastJob.final_video_id
+              ? ` · final ${lastJob.final_video_id.slice(0, 8)}`
+              : ""}
             {lastJob.error_message ? ` · ${lastJob.error_message}` : ""}
           </p>
         </div>
@@ -125,10 +137,16 @@ export function MergePage() {
 
       <div className="grid flex-1 gap-8 px-8 py-6 xl:grid-cols-[1.4fr_1fr]">
         <section>
-          <h2 className="font-editorial text-xl text-(--foreground-strong)">Merge pool</h2>
-          <p className="mt-1 text-sm text-(--muted)">Pick exactly two clips for manual merge.</p>
+          <h2 className="font-editorial text-xl text-(--foreground-strong)">
+            Merge pool
+          </h2>
+          <p className="mt-1 text-sm text-(--muted)">
+            Pick exactly two clips for manual merge.
+          </p>
 
-          {poolQuery.isLoading && <p className="mt-4 text-sm text-(--muted)">Loading pool</p>}
+          {poolQuery.isLoading && (
+            <p className="mt-4 text-sm text-(--muted)">Loading pool</p>
+          )}
           {poolQuery.isError && (
             <p className="mt-4 text-sm text-(--pastel-red-text)">
               {(poolQuery.error as Error).message}
@@ -158,8 +176,12 @@ export function MergePage() {
         </section>
 
         <section>
-          <h2 className="font-editorial text-xl text-(--foreground-strong)">Final videos</h2>
-          <p className="mt-1 text-sm text-(--muted)">Ready for upload handoff.</p>
+          <h2 className="font-editorial text-xl text-(--foreground-strong)">
+            Final videos
+          </h2>
+          <p className="mt-1 text-sm text-(--muted)">
+            Ready for upload handoff.
+          </p>
 
           {finals.length === 0 && (
             <p className="mt-4 text-sm text-(--muted)">No finals yet.</p>
@@ -202,7 +224,7 @@ function PoolCard({
     <button
       type="button"
       onClick={onToggle}
-      className={`surface-card stagger-item overflow-hidden text-left ${
+      className={`panel-section overflow-hidden text-left ${
         selected ? "ring-2 ring-(--foreground-strong)" : ""
       }`}
       style={{ ["--stagger-index" as string]: index }}
@@ -210,7 +232,11 @@ function PoolCard({
       <div className="relative aspect-video bg-(--surface-muted)">
         {video.thumbnail_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={video.thumbnail_url} alt={video.title} className="h-full w-full object-cover" />
+          <img
+            src={video.thumbnail_url}
+            alt={video.title}
+            className="h-full w-full object-cover"
+          />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-(--muted)">
             No preview
@@ -221,7 +247,9 @@ function PoolCard({
         <p className="line-clamp-2 text-sm font-medium text-(--foreground-strong)">
           {video.title}
         </p>
-        {video.keyword && <span className="tag-pill tag-blue">{video.keyword}</span>}
+        {video.keyword && (
+          <span className="tag-pill tag-blue">{video.keyword}</span>
+        )}
       </div>
     </button>
   );

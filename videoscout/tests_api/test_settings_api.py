@@ -7,7 +7,7 @@ def test_get_settings_defaults(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["weights"]["relevance"] == 0.30
-    assert data["filters"]["min_score_threshold"] == 0.4
+    assert data["filters"]["min_score_threshold"] == 0.55
     assert data["llm"]["model"] == "gpt-4o"
     assert data["tiktok"]["check_enabled"] is True
 
