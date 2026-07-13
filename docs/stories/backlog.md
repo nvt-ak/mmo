@@ -62,7 +62,7 @@ Active stories for VideoScout. Create story packets before implementation
 | US-073 | Discovery inbox qualification gates | E09 | tiny | implemented |
 | US-066 | Trend Cluster — duplicate keyword grouping (Phase 2) | E09 | normal | implemented |
 | US-074 | Channel discovery minimum score threshold | E05 | high-risk | implemented |
-| US-075 | Channel content relevance gate | E05 | high-risk | planned |
+| US-075 | Channel content relevance gate | E05 | high-risk | implemented |
 
 ## Roadmap Phases
 

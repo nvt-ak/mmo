@@ -1,8 +1,14 @@
 """Keyword-based YouTube channel discovery and scoring."""
 from dataclasses import dataclass
-from typing import List
 import logging
+import re
+from typing import Any, Dict, List, Tuple
 
+from videoscout.core_engine.nurture_scorer import (
+    _GENERIC_TOKENS,
+    _contiguous_match,
+    _title_tokens_ordered,
+)
 from videoscout.services.youtube import get_youtube_service
 
 logger = logging.getLogger(__name__)
@@ -25,6 +31,62 @@ class ChannelCandidate:
 # quality; 40/100 catches obviously weak channels while preserving the legacy
 # scoring range.
 MIN_DISCOVERY_SCORE = 40.0
+
+# Minimum keyword-to-channel-content relevance required before subscribing a
+# channel. Computed from recent video titles/descriptions. 0.5 means at least
+# half the keyword tokens (or an exact phrase) appear in recent content.
+MIN_CHANNEL_RELEVANCE_THRESHOLD = 0.5
+
+
+def _channel_content_tokens(text: str) -> set[str]:
+    """Normalize and tokenize channel content text, stripping generic terms."""
+    cleaned = re.sub(r"[^\w\s-]", " ", (text or "").lower())
+    return {
+        t
+        for t in cleaned.split()
+        if len(t) > 1 and t not in _GENERIC_TOKENS
+    }
+
+
+def compute_channel_keyword_relevance(
+    keyword: str,
+    videos: List[Dict[str, Any]],
+) -> Tuple[float, str]:
+    """
+    Score how well a keyword matches a channel's recent video content.
+
+    Returns (score, reason) where score is 0.0-1.0.
+    """
+    kw_lower = (keyword or "").lower().strip()
+    kw_tokens = _channel_content_tokens(kw_lower)
+    if not kw_tokens:
+        return 0.0, "Keyword contains only generic tokens."
+
+    if not videos:
+        return 0.0, "No recent videos to evaluate relevance."
+
+    best_score = 0.0
+    best_reason = "No meaningful overlap with recent videos."
+
+    for video in videos:
+        title = str(video.get("title") or "")
+        description = str(video.get("description") or "")
+        content_text = f"{title} {description}".strip()
+        ordered = _title_tokens_ordered(content_text)
+
+        contiguous, _, _ = _contiguous_match(kw_lower, ordered)
+        if contiguous:
+            return 1.0, "Exact keyword phrase found in recent video title/description."
+
+        text_tokens = _channel_content_tokens(content_text)
+        if text_tokens:
+            overlap = len(kw_tokens & text_tokens) / len(kw_tokens)
+            if overlap > best_score:
+                best_score = overlap
+                matched = ", ".join(sorted(kw_tokens & text_tokens))
+                best_reason = f"Token overlap {overlap:.0%} ({matched}) with recent video."
+
+    return round(best_score, 3), best_reason
 
 
 def _score_channel(subs: int, avg_views: int, video_count: int) -> float:

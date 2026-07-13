@@ -11,9 +11,12 @@ from videoscout.db.models import (
     DownloadJobModel,
 )
 from videoscout.core_engine.channel_discovery import (
+    MIN_CHANNEL_RELEVANCE_THRESHOLD,
     MIN_DISCOVERY_SCORE,
+    compute_channel_keyword_relevance,
     discover_channels,
 )
+from videoscout.services.youtube import get_youtube_service
 from videoscout.workers.bulk_download import run_bulk_download
 
 logger = logging.getLogger(__name__)
@@ -51,7 +54,38 @@ def run_keyword_cascade(job_id: str) -> None:
         discovered_count = len(candidates)
         qualified = [c for c in candidates if c.discovery_score >= MIN_DISCOVERY_SCORE]
 
+        youtube = get_youtube_service()
+        relevant_candidates = []
         for candidate in qualified[:5]:
+            recent_videos = youtube.get_recent_videos(
+                candidate.youtube_channel_id,
+                days=30,
+                max_results=10,
+            )
+            relevance, rel_reason = compute_channel_keyword_relevance(
+                suggestion.keyword,
+                recent_videos,
+            )
+            if relevance >= MIN_CHANNEL_RELEVANCE_THRESHOLD:
+                relevant_candidates.append(candidate)
+                logger.debug(
+                    "Channel '%s' relevant for '%s': %s (score %.2f)",
+                    candidate.name,
+                    suggestion.keyword,
+                    rel_reason,
+                    relevance,
+                )
+            else:
+                logger.info(
+                    "Channel '%s' filtered for '%s': relevance %.2f < %.2f (%s)",
+                    candidate.name,
+                    suggestion.keyword,
+                    relevance,
+                    MIN_CHANNEL_RELEVANCE_THRESHOLD,
+                    rel_reason,
+                )
+
+        for candidate in relevant_candidates[:5]:
             channel = db.query(ChannelModel).filter(
                 ChannelModel.channel_id == candidate.youtube_channel_id
             ).first()
@@ -95,10 +129,16 @@ def run_keyword_cascade(job_id: str) -> None:
         job.completed_at = datetime.utcnow()
 
         if subscribed_count == 0:
-            job.status = "completed_no_source"
+            no_source_status = (
+                "completed_no_source"
+                if not qualified
+                else "completed_no_relevant_source"
+            )
+            job.status = no_source_status
             db.commit()
             logger.info(
-                "Keyword cascade completed without source channels for keyword '%s' (job %s)",
+                "Keyword cascade %s for keyword '%s' (job %s)",
+                no_source_status,
                 suggestion.keyword,
                 job_id,
             )

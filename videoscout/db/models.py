@@ -509,7 +509,7 @@ class KeywordCascadeJobModel(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('started', 'running', 'completed', 'completed_no_source', 'failed')",
+            "status IN ('started', 'running', 'completed', 'completed_no_source', 'completed_no_relevant_source', 'failed')",
             name="ck_keyword_cascade_jobs_status",
         ),
         Index(

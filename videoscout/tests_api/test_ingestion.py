@@ -8,10 +8,11 @@ from videoscout.db.models import (
 )
 
 
-def _mock_channel_discovery(mock_get_yt):
+def _mock_channel_discovery(mock_get_yt, *, recent_videos=None):
     mock_service = MagicMock()
     mock_client = MagicMock()
     mock_service.client = mock_client
+    mock_service.get_recent_videos.return_value = recent_videos or []
     mock_get_yt.return_value = mock_service
 
     mock_client.search.return_value.list.return_value.execute.return_value = {
@@ -81,15 +82,23 @@ def _mock_bulk_recent_videos(mock_get_youtube):
 
 @patch("videoscout.workers.bulk_download.DownloadService.download", return_value=True)
 @patch("videoscout.workers.bulk_download.get_youtube_service")
+@patch("videoscout.workers.keyword_cascade.get_youtube_service")
 @patch("videoscout.core_engine.channel_discovery.get_youtube_service")
 def test_cascade_triggers_bulk_download_and_persists_assets(
     mock_discovery_youtube,
+    mock_cascade_youtube,
     mock_bulk_youtube,
     mock_download,
     client,
     db_session,
 ):
-    _mock_channel_discovery(mock_discovery_youtube)
+    _mock_channel_discovery(
+        mock_discovery_youtube,
+        recent_videos=[
+            {"title": "r3 ingestion keyword demo", "description": ""},
+        ],
+    )
+    mock_cascade_youtube.return_value = mock_discovery_youtube.return_value
     _mock_bulk_recent_videos(mock_bulk_youtube)
 
     suggestion = SuggestionModel(

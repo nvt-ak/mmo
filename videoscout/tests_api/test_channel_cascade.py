@@ -9,11 +9,13 @@ from videoscout.db.models import (
 )
 
 
-def _mock_youtube_discovery(mock_get_yt):
+def _setup_youtube_mocks(mock_discovery_get_yt, mock_cascade_get_yt, *, recent_videos=None):
     mock_service = MagicMock()
     mock_client = MagicMock()
     mock_service.client = mock_client
-    mock_get_yt.return_value = mock_service
+    mock_service.get_recent_videos.return_value = recent_videos or []
+    mock_discovery_get_yt.return_value = mock_service
+    mock_cascade_get_yt.return_value = mock_service
 
     mock_search_execute = {
         "items": [
@@ -60,13 +62,21 @@ def _mock_youtube_discovery(mock_get_yt):
     )
 
 
+@patch("videoscout.workers.keyword_cascade.get_youtube_service")
 @patch("videoscout.core_engine.channel_discovery.get_youtube_service")
 def test_bulk_approve_triggers_cascade_and_links_channels(
-    mock_get_yt,
+    mock_discovery_get_yt,
+    mock_cascade_get_yt,
     client,
     db_session,
 ):
-    _mock_youtube_discovery(mock_get_yt)
+    _setup_youtube_mocks(
+        mock_discovery_get_yt,
+        mock_cascade_get_yt,
+        recent_videos=[
+            {"title": "ai marketing niche tutorial", "description": ""},
+        ],
+    )
 
     suggestion = SuggestionModel(
         keyword="ai marketing niche",
@@ -130,9 +140,11 @@ def test_bulk_approve_triggers_cascade_and_links_channels(
     assert channels_resp.json()["items"][0]["youtube_channel_id"] in {"UC_ALPHA", "UC_BETA"}
 
 
+@patch("videoscout.workers.keyword_cascade.get_youtube_service")
 @patch("videoscout.core_engine.channel_discovery.get_youtube_service")
 def test_bulk_approve_filters_channels_below_min_score(
-    mock_get_yt,
+    mock_discovery_get_yt,
+    mock_cascade_get_yt,
     client,
     db_session,
 ):
@@ -140,7 +152,9 @@ def test_bulk_approve_filters_channels_below_min_score(
     mock_service = MagicMock()
     mock_client = MagicMock()
     mock_service.client = mock_client
-    mock_get_yt.return_value = mock_service
+    mock_service.get_recent_videos.return_value = []
+    mock_discovery_get_yt.return_value = mock_service
+    mock_cascade_get_yt.return_value = mock_service
 
     # UC_LOW has weak stats → discovery_score below default threshold of 40.
     mock_client.search.return_value.list.return_value.execute.return_value = {
@@ -214,6 +228,73 @@ def test_bulk_approve_filters_channels_below_min_score(
     job_resp = client.get(f"/api/v1/cascade/jobs/{job_id}")
     assert job_resp.status_code == 200
     assert job_resp.json()["status"] == "completed_no_source"
+
+
+@patch("videoscout.workers.keyword_cascade.get_youtube_service")
+@patch("videoscout.core_engine.channel_discovery.get_youtube_service")
+def test_bulk_approve_filters_channels_with_irrelevant_content(
+    mock_discovery_get_yt,
+    mock_cascade_get_yt,
+    client,
+    db_session,
+):
+    """High discovery_score but no keyword in recent videos → not subscribed."""
+    _setup_youtube_mocks(
+        mock_discovery_get_yt,
+        mock_cascade_get_yt,
+        recent_videos=[
+            {"title": "completely unrelated video", "description": "nothing here"},
+        ],
+    )
+
+    suggestion = SuggestionModel(
+        keyword="ai marketing niche",
+        final_score=0.8,
+        component_scores={
+            "relevance": 0.8,
+            "specificity": 0.8,
+            "saturation": 0.7,
+            "trend": 0.6,
+            "video_performance": 0.7,
+        },
+        suggested_by=[{"source": "test", "score": 0.8, "timestamp": "2026-07-02"}],
+        status="pending",
+    )
+    db_session.add(suggestion)
+    db_session.commit()
+    db_session.refresh(suggestion)
+
+    resp = client.post(
+        "/api/v1/suggestions/bulk-approve",
+        json={"keyword_ids": [str(suggestion.id)]},
+    )
+    assert resp.status_code == 200
+    job_id = resp.json()["cascade_job_ids"][0]
+
+    channels = db_session.query(ChannelModel).all()
+    assert len(channels) == 0
+
+    links = db_session.query(ChannelKeywordLinkModel).filter(
+        ChannelKeywordLinkModel.suggestion_id == suggestion.id
+    ).all()
+    assert len(links) == 0
+
+    job = next(
+        (
+            candidate
+            for candidate in db_session.query(KeywordCascadeJobModel).all()
+            if str(candidate.id) == job_id
+        ),
+        None,
+    )
+    assert job is not None
+    assert job.status == "completed_no_relevant_source"
+    assert job.channels_discovered == 2
+    assert job.channels_subscribed == 0
+
+    job_resp = client.get(f"/api/v1/cascade/jobs/{job_id}")
+    assert job_resp.status_code == 200
+    assert job_resp.json()["status"] == "completed_no_relevant_source"
 
 
 def test_bulk_approve_skips_already_approved_suggestion(client, db_session):

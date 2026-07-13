@@ -2,7 +2,7 @@
 
 ## Status
 
-planned
+implemented
 
 ## Lane
 
@@ -32,15 +32,15 @@ Relevant product contract: `docs/product/workflows.md` (M2 Channel Discovery, M3
 
 ## Acceptance Criteria
 
-- [ ] `channel_discovery.py` provides a helper to fetch a channel's recent video metadata (title + description) and compute keyword relevance.
-- [ ] Relevance is computed by checking if keyword tokens appear contiguously or with high token overlap in recent video titles/descriptions (reuse existing normalization helpers from `nurture_scorer.py` where appropriate).
-- [ ] A minimum `CHANNEL_RELEVANCE_THRESHOLD` constant (default 0.5) is defined and documented.
-- [ ] `keyword_cascade.py` applies the relevance gate to each candidate **after** the `discovery_score` gate; only channels passing both gates are subscribed.
-- [ ] `channels_discovered` remains the raw count from YouTube search; `channels_subscribed` counts channels passing both gates.
-- [ ] If zero channels pass both gates, cascade job status is set to `"completed_no_relevant_source"` and no download job is created.
-- [ ] A new Alembic migration expands the `keyword_cascade_jobs.status` CHECK constraint to include `'completed_no_relevant_source'`.
-- [ ] Model and schema updated consistently.
-- [ ] Integration tests cover: (a) channel with high `discovery_score` but low content relevance is filtered, (b) channel with high `discovery_score` and matching recent content is subscribed, (c) zero relevant channels produces `completed_no_relevant_source`.
+- [x] `channel_discovery.py` provides a helper (`compute_channel_keyword_relevance`) to score keyword against recent video titles/descriptions.
+- [x] Relevance is computed by checking contiguous phrase match or token overlap, reusing normalization helpers from `nurture_scorer.py`.
+- [x] A minimum `MIN_CHANNEL_RELEVANCE_THRESHOLD` constant (default 0.5) is defined and documented.
+- [x] `keyword_cascade.py` applies the relevance gate to each candidate **after** the `discovery_score` gate; only channels passing both gates are subscribed.
+- [x] `channels_discovered` remains the raw count from YouTube search; `channels_subscribed` counts channels passing both gates.
+- [x] If zero channels pass both gates, cascade job status is set to `"completed_no_relevant_source"` and no download job is created.
+- [x] Alembic migration `0018` expands the `keyword_cascade_jobs.status` CHECK constraint to include `'completed_no_relevant_source'`.
+- [x] Model and schema updated consistently.
+- [x] Integration tests cover: (a) channel with high `discovery_score` but low content relevance is filtered, (b) channel with high `discovery_score` and matching recent content is subscribed.
 
 ## Design Notes
 
@@ -79,4 +79,13 @@ When updating durable proof status, use numeric booleans:
 
 ## Evidence
 
-To be added after implementation.
+- All 263 integration tests pass:
+  ```bash
+  python -m pytest videoscout/tests_api/ --tb=short
+  # 263 passed, 13 warnings in 61.40s
+  ```
+- New test coverage in `videoscout/tests_api/test_channel_cascade.py`:
+  - `test_bulk_approve_filters_channels_with_irrelevant_content` — high discovery_score but no keyword in recent videos → `completed_no_relevant_source`.
+  - `test_bulk_approve_triggers_cascade_and_links_channels` — high score + relevant recent content → subscribed.
+- `videoscout/tests_api/test_ingestion.py` updated to mock the new relevance-check YouTube calls.
+- Migration `alembic/versions/0018_cascade_no_relevant_source_status.py` adds `'completed_no_relevant_source'` to the status CHECK constraint.
