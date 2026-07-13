@@ -11,10 +11,9 @@ from videoscout.db.models import (
     DownloadJobModel,
 )
 from videoscout.core_engine.channel_discovery import (
-    MIN_CHANNEL_RELEVANCE_THRESHOLD,
     MIN_DISCOVERY_SCORE,
-    compute_channel_keyword_relevance,
     discover_channels,
+    evaluate_channel_relevance,
 )
 from videoscout.services.youtube import get_youtube_service
 from videoscout.workers.bulk_download import run_bulk_download
@@ -62,11 +61,13 @@ def run_keyword_cascade(job_id: str) -> None:
                 days=30,
                 max_results=10,
             )
-            relevance, rel_reason = compute_channel_keyword_relevance(
+            passed, relevance, rel_reason, rel_signals = evaluate_channel_relevance(
                 suggestion.keyword,
-                recent_videos,
+                channel_name=candidate.name,
+                channel_description=candidate.description,
+                videos=recent_videos,
             )
-            if relevance >= MIN_CHANNEL_RELEVANCE_THRESHOLD:
+            if passed:
                 relevant_candidates.append(candidate)
                 logger.debug(
                     "Channel '%s' relevant for '%s': %s (score %.2f)",
@@ -77,12 +78,12 @@ def run_keyword_cascade(job_id: str) -> None:
                 )
             else:
                 logger.info(
-                    "Channel '%s' filtered for '%s': relevance %.2f < %.2f (%s)",
+                    "Channel '%s' filtered for '%s': branch=%s score=%.2f metadata=%.2f",
                     candidate.name,
                     suggestion.keyword,
+                    rel_signals.get("decision_branch"),
                     relevance,
-                    MIN_CHANNEL_RELEVANCE_THRESHOLD,
-                    rel_reason,
+                    rel_signals.get("metadata_score"),
                 )
 
         for candidate in relevant_candidates[:5]:

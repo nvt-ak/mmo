@@ -1,0 +1,117 @@
+{
+  "keyword": "jetzt kommt rolf",
+  "source": "Empirical YouTube cascade relevance session 2026-07-13. Titles are representative; replace with exact scrape if API titles drift.",
+  "cases": [
+    {
+      "channel_id": "UC_CARGO_TOPIC_PLACEHOLDER",
+      "channel_name": "Cargo - Topic",
+      "channel_description": "Offizieller YouTube-Kanal von Rolf Zuckowski. Rolf Zuckowski ist einer der bekanntesten deutschsprachigen Kinderliedermacher.",
+      "videos": [
+        {"title": "Rolf Zuckowski - Frühlingslied", "description": ""},
+        {"title": "Rolf Zuckowski - Sommer, Sonne, Sonnenschein", "description": ""},
+        {"title": "Rolf Zuckowski - Wie schön, dass du geboren bist", "description": ""},
+        {"title": "Rolf Zuckowski - Ich bin ein kleiner Schornsteinfeger", "description": ""},
+        {"title": "Rolf Zuckowski - Hexentanz", "description": ""},
+        {"title": "Rolf Zuckowski - Der Gorilla mit der Sonnenbrille", "description": ""},
+        {"title": "Rolf Zuckowski - In der Weihnachtsbäckerei", "description": ""},
+        {"title": "Rolf Zuckowski - Die Jahresuhr", "description": ""},
+        {"title": "Rolf Zuckowski - Kinderlieder Mix", "description": ""},
+        {"title": "Rolf Zuckowski - Alle meine Entchen", "description": ""}
+      ],
+      "match_count": 0,
+      "match_rate": 0.0,
+      "expect_subscribe": true,
+      "expected_branch": "metadata_pass",
+      "note": "Official artist channel; recent uploads omit jetzt/kommt/rolf tokens."
+    },
+    {
+      "channel_id": "UC_ROLFS_VATER_PLACEHOLDER",
+      "channel_name": "Rolfs Vater",
+      "channel_description": "Prank and comedy clips.",
+      "videos": [
+        {"title": "Rolf prank compilation 2026", "description": ""},
+        {"title": "Funny rolf moments", "description": ""},
+        {"title": "Best pranks this week", "description": ""},
+        {"title": "Rolf and friends joke", "description": ""},
+        {"title": "Viral prank fail", "description": ""},
+        {"title": "Rolf surprise", "description": ""},
+        {"title": "Comedy short rolf", "description": ""},
+        {"title": "Prank gone wrong", "description": ""},
+        {"title": "Rolf clip", "description": ""},
+        {"title": "New prank video", "description": ""}
+      ],
+      "match_count": 1,
+      "match_rate": 0.1,
+      "expect_subscribe": false,
+      "expected_branch": "rejected",
+      "note": "Only rolf token overlap; not thematic match."
+    },
+    {
+      "channel_id": "UC_SIMONSAGT_PLACEHOLDER",
+      "channel_name": "SimonsagtVEVO",
+      "channel_description": "Official music videos.",
+      "videos": [
+        {"title": "Simon sagt - Neues Lied", "description": ""},
+        {"title": "Simon sagt - Live Auftritt", "description": ""},
+        {"title": "Simon sagt - Making Of", "description": ""},
+        {"title": "Simon sagt - Interview", "description": ""},
+        {"title": "Simon sagt - Tour 2026", "description": ""},
+        {"title": "Simon sagt - Akustik Session", "description": ""},
+        {"title": "Simon sagt - Fan Video", "description": ""},
+        {"title": "Simon sagt - Remix", "description": ""},
+        {"title": "Simon sagt - Karaoke", "description": ""},
+        {"title": "Simon sagt - Rolf cover unrelated", "description": ""}
+      ],
+      "match_count": 1,
+      "match_rate": 0.1,
+      "expect_subscribe": false,
+      "expected_branch": "rejected",
+      "note": "Different artist; incidental rolf mention."
+    },
+    {
+      "channel_id": "UC_HANS_SCHMITZ_PLACEHOLDER",
+      "channel_name": "Hans Schmitz",
+      "channel_description": "Kurzfilme und Clips zur Osterzeit. Der Retter Filmreihe.",
+      "videos": [
+        {"title": "Der Retter Film 1 - Ostern", "description": ""},
+        {"title": "Der Retter Film 2 - Passion", "description": ""},
+        {"title": "Der Retter Film 3 - Auferstehung", "description": ""},
+        {"title": "Der Retter Film 4 - Glaube", "description": ""},
+        {"title": "Der Retter Film 5 - Hoffnung", "description": ""},
+        {"title": "Der Retter Film 6 - Liebe", "description": ""},
+        {"title": "Der Retter Film 7 - Frieden", "description": ""},
+        {"title": "Der Retter Film 8 - Gnade", "description": ""},
+        {"title": "Der Retter Film 9 - Erlösung", "description": ""},
+        {"title": "Rolf Zuckowski Jetzt kommt die Osterzeit Film Der Retter", "description": ""}
+      ],
+      "match_count": 1,
+      "match_rate": 0.1,
+      "expect_subscribe": false,
+      "expected_branch": "catalog_outlier_single",
+      "failure_mode": "single_video_outlier_in_coherent_catalog",
+      "note": "US-075 scores video_best=1.0 via 100% token overlap (jetzt, kommt, rolf scattered). Dominant catalog pattern: Der Retter."
+    },
+    {
+      "channel_id": "UC_MIKADO_SINGT_PLACEHOLDER",
+      "channel_name": "Mikado singt",
+      "channel_description": "Kinderlieder und Covers von Rolf Zuckowski und anderen.",
+      "videos": [
+        {"title": "Mikado singt - Jetzt kommt Rolf Zuckowski Osterlied Cover", "description": ""},
+        {"title": "Mikado singt - Kinderlied Mix", "description": ""},
+        {"title": "Mikado singt - Frühlingslieder", "description": ""},
+        {"title": "Mikado singt - Osterlieder für Kinder", "description": ""},
+        {"title": "Mikado singt - Rolf Zuckowski Medley", "description": ""},
+        {"title": "Mikado singt - Sing mit uns", "description": ""},
+        {"title": "Mikado singt - Live Session", "description": ""},
+        {"title": "Mikado singt - Acapella Cover", "description": ""},
+        {"title": "Mikado singt - Neue Covers", "description": ""},
+        {"title": "Mikado singt - Backstage", "description": ""}
+      ],
+      "match_count": 1,
+      "match_rate": 0.1,
+      "expect_subscribe": true,
+      "expected_branch": "catalog_coherent_single",
+      "note": "Same match_rate as Hans Schmitz (0.1) — positive control; must not be separated by match_rate threshold alone."
+    }
+  ]
+}
