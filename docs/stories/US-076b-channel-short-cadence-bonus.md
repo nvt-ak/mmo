@@ -135,8 +135,14 @@ python -m pytest videoscout/tests_api/test_channel_cadence.py \
 python -m pytest videoscout/tests_api/test_channel_cadence.py \
   videoscout/tests_api/test_channel_relevance_v2.py \
   videoscout/tests_api/test_channel_cascade.py -v
-# 26 passed, 10 warnings in 1.66s
+# 27 passed, 10 warnings in 2.04s
 
 python -m pytest videoscout/tests_api/ --tb=short -q
-# 285 passed, 13 warnings in 198.52s
+# 286 passed, 13 warnings in 153.21s
 ```
+
+Polish applied after review:
+- `evaluate_channel_relevance` returns `base_score` (pre-bonus semantic) while `source_quality_score` lives in `signals`.
+- Cascade sorts pass channels by `source_quality_score` for tie-break.
+- `metadata_pass` still computes real cadence for observability but keeps `cadence_bonus=0`.
+- `compute_short_upload_cadence` falls back to `upload_date` if `published_at` is missing.

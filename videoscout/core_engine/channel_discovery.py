@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import logging
 import math
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 from videoscout.core_engine.nurture_scorer import (
     _GENERIC_TOKENS,
@@ -183,7 +183,12 @@ def compute_short_upload_cadence(
         if duration > short_max_duration_sec:
             continue
         dt = _parse_published_at(video.get(timestamp_key))
+        # Fallback to upload_date for legacy callers / mocks.
+        if dt is None and timestamp_key != "upload_date":
+            dt = _parse_published_at(video.get("upload_date"))
         if dt is not None:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
             timestamps.append(dt)
 
     shorts_count = len(timestamps)
@@ -324,18 +329,14 @@ def evaluate_channel_relevance(
             branch = "rejected"
             base_score = video_best
 
-    # US-076b short-upload cadence bonus.
+    # US-076b short-upload cadence bonus. Cadence is always computed for
+    # observability, but the bonus is only applied to non-metadata branches so
+    # that infrequent official channels (e.g. Cargo - Topic) are not penalized.
+    cadence = compute_short_upload_cadence(videos)
     if branch == "metadata_pass":
-        cadence = {
-            "shorts_count": 0,
-            "shorts_per_day": 0.0,
-            "window_span_days": 0.0,
-            "cadence_confidence": "low",
-        }
         cadence_skipped = True
         cadence_bonus = 0.0
     else:
-        cadence = compute_short_upload_cadence(videos)
         cadence_skipped = False
         cadence_bonus = _cadence_bonus(cadence, channel_avg_views)
 
@@ -348,16 +349,18 @@ def evaluate_channel_relevance(
         "metadata_score": metadata_score,
         "catalog_dominant_pattern": catalog_dominant_pattern,
         "decision_branch": branch,
+        "base_score": base_score,
+        "source_quality_score": source_quality_score,
         "shorts_per_day": cadence["shorts_per_day"],
         "cadence_bonus": cadence_bonus,
         "cadence_skipped": cadence_skipped,
-        "source_quality_score": source_quality_score,
         # Raw cadence details for debug / future UI.
         "cadence_shorts_count": cadence["shorts_count"],
         "cadence_window_span_days": cadence["window_span_days"],
         "cadence_confidence": cadence["cadence_confidence"],
     }
-    return passed, source_quality_score, branch, signals
+    # Preserve the pre-bonus semantic of ``score``; bonus lives in signals.
+    return passed, base_score, branch, signals
 
 
 def compute_channel_keyword_relevance(

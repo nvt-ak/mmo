@@ -1,6 +1,7 @@
 """Keyword approve cascade worker."""
 from datetime import datetime
 import logging
+from typing import Any
 
 import videoscout.db as db_module
 from videoscout.db.models import (
@@ -54,14 +55,16 @@ def run_keyword_cascade(job_id: str) -> None:
         qualified = [c for c in candidates if c.discovery_score >= MIN_DISCOVERY_SCORE]
 
         youtube = get_youtube_service()
-        relevant_candidates = []
+        # Collect (candidate, signals) tuples so we can tie-break by
+        # source_quality_score (US-076b) before subscribing.
+        relevant_entries: list[tuple[Any, dict]] = []
         for candidate in qualified[:5]:
             recent_videos = youtube.get_recent_videos(
                 candidate.youtube_channel_id,
                 days=30,
                 max_results=10,
             )
-            passed, relevance, rel_reason, rel_signals = evaluate_channel_relevance(
+            passed, base_score, rel_reason, rel_signals = evaluate_channel_relevance(
                 suggestion.keyword,
                 channel_name=candidate.name,
                 channel_description=candidate.description,
@@ -69,31 +72,39 @@ def run_keyword_cascade(job_id: str) -> None:
                 channel_avg_views=candidate.avg_views,
             )
             if passed:
-                relevant_candidates.append(candidate)
+                relevant_entries.append((candidate, rel_signals))
                 logger.debug(
-                    "Channel '%s' relevant for '%s': %s (score %.2f, "
-                    "shorts/day=%.2f, cadence_bonus=%.2f)",
+                    "Channel '%s' relevant for '%s': %s (base_score=%.2f, "
+                    "source_quality_score=%.2f, shorts/day=%.2f, "
+                    "cadence_bonus=%.2f)",
                     candidate.name,
                     suggestion.keyword,
                     rel_reason,
-                    relevance,
+                    base_score,
+                    rel_signals.get("source_quality_score", base_score),
                     rel_signals.get("shorts_per_day", 0.0),
                     rel_signals.get("cadence_bonus", 0.0),
                 )
             else:
                 logger.info(
-                    "Channel '%s' filtered for '%s': branch=%s score=%.2f "
+                    "Channel '%s' filtered for '%s': branch=%s base_score=%.2f "
                     "metadata=%.2f shorts/day=%.2f cadence_skipped=%s",
                     candidate.name,
                     suggestion.keyword,
                     rel_signals.get("decision_branch"),
-                    relevance,
+                    base_score,
                     rel_signals.get("metadata_score"),
                     rel_signals.get("shorts_per_day", 0.0),
                     rel_signals.get("cadence_skipped"),
                 )
 
-        for candidate in relevant_candidates[:5]:
+        # US-076b tie-break: prefer channels with higher source quality.
+        relevant_entries.sort(
+            key=lambda entry: entry[1].get("source_quality_score", 0.0),
+            reverse=True,
+        )
+
+        for candidate, _rel_signals in relevant_entries[:5]:
             channel = db.query(ChannelModel).filter(
                 ChannelModel.channel_id == candidate.youtube_channel_id
             ).first()

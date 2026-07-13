@@ -91,8 +91,9 @@ class TestCadenceBonusInEvaluate:
         assert signals["shorts_per_day"] > 0.0
         assert signals["cadence_bonus"] == CADENCE_BONUS_MAX
         assert signals["cadence_skipped"] is False
+        assert signals["base_score"] == pytest.approx(score, abs=0.001)
         assert signals["source_quality_score"] == pytest.approx(
-            score, abs=0.001
+            score + CADENCE_BONUS_MAX, abs=0.001
         )
 
     def test_no_bonus_when_avg_views_too_low(self):
@@ -121,6 +122,20 @@ class TestCadenceBonusInEvaluate:
             channel_name="Cargo - Topic",
             channel_description="Official channel for Rolf Zuckowski",
             videos=[_video("unrelated", "2026-07-07T00:00:00Z", 60)],
+            channel_avg_views=CADENCE_MIN_AVG_VIEWS,
+        )
+        assert branch == "metadata_pass"
+        assert signals["cadence_skipped"] is True
+        assert signals["cadence_bonus"] == 0.0
+        # Cadence is still computed for observability even though bonus is 0.
+        assert signals["shorts_per_day"] == 1.0
+
+    def test_metadata_pass_with_no_shorts_logs_zero_cadence(self):
+        passed, _score, branch, signals = evaluate_channel_relevance(
+            "rolf zuckowski",
+            channel_name="Cargo - Topic",
+            channel_description="Official channel for Rolf Zuckowski",
+            videos=[_video("unrelated", "2026-07-07T00:00:00Z", 240)],
             channel_avg_views=CADENCE_MIN_AVG_VIEWS,
         )
         assert branch == "metadata_pass"
