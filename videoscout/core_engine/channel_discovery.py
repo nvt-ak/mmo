@@ -20,6 +20,13 @@ class ChannelCandidate:
     discovery_score: float
 
 
+# Minimum channel discovery score required before a channel is considered
+# qualified for keyword-cascade subscription. Tune based on observed channel
+# quality; 40/100 catches obviously weak channels while preserving the legacy
+# scoring range.
+MIN_DISCOVERY_SCORE = 40.0
+
+
 def _score_channel(subs: int, avg_views: int, video_count: int) -> float:
     """Ported channel scoring logic from legacy discovery service."""
     if 150_000 <= avg_views <= 200_000:

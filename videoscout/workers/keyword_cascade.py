@@ -10,7 +10,10 @@ from videoscout.db.models import (
     KeywordCascadeJobModel,
     DownloadJobModel,
 )
-from videoscout.core_engine.channel_discovery import discover_channels
+from videoscout.core_engine.channel_discovery import (
+    MIN_DISCOVERY_SCORE,
+    discover_channels,
+)
 from videoscout.workers.bulk_download import run_bulk_download
 
 logger = logging.getLogger(__name__)
@@ -46,8 +49,9 @@ def run_keyword_cascade(job_id: str) -> None:
 
         candidates = discover_channels(suggestion.keyword, max_results=10)
         discovered_count = len(candidates)
+        qualified = [c for c in candidates if c.discovery_score >= MIN_DISCOVERY_SCORE]
 
-        for candidate in candidates[:5]:
+        for candidate in qualified[:5]:
             channel = db.query(ChannelModel).filter(
                 ChannelModel.channel_id == candidate.youtube_channel_id
             ).first()
@@ -86,6 +90,20 @@ def run_keyword_cascade(job_id: str) -> None:
                     )
                 )
 
+        job.channels_discovered = discovered_count
+        job.channels_subscribed = subscribed_count
+        job.completed_at = datetime.utcnow()
+
+        if subscribed_count == 0:
+            job.status = "completed_no_source"
+            db.commit()
+            logger.info(
+                "Keyword cascade completed without source channels for keyword '%s' (job %s)",
+                suggestion.keyword,
+                job_id,
+            )
+            return
+
         download_job = DownloadJobModel(
             job_type="bulk",
             suggestion_id=suggestion.id,
@@ -96,10 +114,7 @@ def run_keyword_cascade(job_id: str) -> None:
         db.add(download_job)
         db.flush()
 
-        job.channels_discovered = discovered_count
-        job.channels_subscribed = subscribed_count
         job.status = "completed"
-        job.completed_at = datetime.utcnow()
         db.commit()
         run_bulk_download(str(download_job.id))
     except Exception as exc:  # pragma: no cover - defensive path
