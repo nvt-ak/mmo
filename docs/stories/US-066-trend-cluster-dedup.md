@@ -1,6 +1,6 @@
 # US-066 Trend Cluster — Duplicate Keyword Grouping (Phase 2)
 
-Status: planned
+Status: implemented
 ADR: 0014 (Phase 2)
 Intake: normal — flags: data model (new entity + migration), existing behavior
 (ranking/inbox persist path changes), public contracts (inbox response shape
@@ -47,23 +47,23 @@ parallel processing path.
 
 ### In scope
 
-- [ ] Heuristic dedup pass (Tier 0, all candidates): normalized token
+- [x] Heuristic dedup pass (Tier 0, all candidates): normalized token
       overlap (Jaccard) on keyword text, after stripping the existing
       generic-token set (reuse nurture generic-token list — do not fork it)
-- [ ] Configurable overlap threshold band: below = distinct, above = auto
+- [x] Configurable overlap threshold band: below = distinct, above = auto
       same cluster, in-between = ambiguous → escalate
-- [ ] Ambiguous pairs added to the existing Top-N validation LLM payload as
+- [x] Ambiguous pairs added to the existing Top-N validation LLM payload as
       a grouping question (extend `validation_pass.py` contract; do not add
       a third LLM call)
-- [ ] New `TrendCluster` entity/table: id, canonical_keyword, member
+- [x] New `TrendCluster` entity/table: id, canonical_keyword, member
       keyword ids, created_at, `pipeline_run_id`
-- [ ] `cluster_id` (nullable FK) added to keyword/suggestion row — nullable
+- [x] `cluster_id` (nullable FK) added to keyword/suggestion row — nullable
       because most candidates will not cluster
-- [ ] Inbox API: keywords in the same cluster render grouped/collapsed;
+- [x] Inbox API: keywords in the same cluster render grouped/collapsed;
       member keywords still individually visible on expand
 - [ ] `schema_version` bump note on any TrendEvidence field touched (per
-      ADR 0013 rule 5)
-- [ ] Tests: heuristic overlap unit tests, threshold-band boundary cases,
+      ADR 0013 rule 5) — N/A; no TrendEvidence fields changed
+- [x] Tests: heuristic overlap unit tests, threshold-band boundary cases,
       validation payload extension, cluster persistence, inbox grouping
 
 ### Explicitly out of scope (do not resolve in this story)
@@ -74,19 +74,14 @@ parallel processing path.
 - Multi-region trend clustering
 - Changing existing rubric scoring weights or `history_prior` math
 
-### Open design questions (must be answered before implementation starts,
-not before story creation — normal lane does not require this story to sit
-idle, but these three need an explicit call in `design.md`/PR description)
+### Open design questions (resolved in implementation)
 
-1. **Canonical alias selection** — highest-evidence member, or LLM-proposed
-   new label? Affects UI copy and dedup key stability across runs.
-2. **`history_prior` interaction** — if one cluster member was previously
-   rejected, does the cluster inherit a penalty, or does each member keep
-   independent history until cluster identity proves stable across runs?
-3. **Threshold tuning source** — fixed constant at ship time, or backfill
-   experiment (label N candidate pairs "same pattern" vs "different") before
-   picking the band, mirroring the pre-code experiment pattern ADR 0013/0014
-   both used?
+1. **Canonical alias selection** — highest `final_score` member after ranking
+   (stable, no extra LLM label).
+2. **`history_prior` interaction** — each member keeps independent
+   `history_prior` at scoring time; no cluster-level penalty in Phase 2.
+3. **Threshold tuning source** — fixed defaults (`CLUSTER_JACCARD_LOW=0.35`,
+   `CLUSTER_JACCARD_HIGH=0.65`) with env override at ship time.
 
 ## Acceptance Criteria
 
@@ -121,4 +116,8 @@ in this sandbox is macOS arm64 and cannot execute here).
 
 ## Evidence
 
-(Add commands, reports, or links once validation exists.)
+```bash
+python -m pytest videoscout/tests_api/test_trend_cluster.py videoscout/tests_api/test_trend_cluster_integration.py videoscout/tests_api/test_validation_pass.py -v
+cd web && npm run lint && npm run build
+alembic upgrade head
+```

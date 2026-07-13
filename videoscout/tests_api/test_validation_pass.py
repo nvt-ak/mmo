@@ -76,3 +76,15 @@ def test_fragmented_pattern_reduces_confidence():
 
 def test_discovery_validation_enabled_default():
     assert discovery_validation_enabled() is True
+
+
+def test_build_validation_prompt_includes_ambiguous_pairs():
+    from videoscout.core_engine.validation_pass import _build_validation_prompt
+
+    prompt = _build_validation_prompt(
+        [{"keyword": "alpha beta"}],
+        [("alpha beta", "alpha betas", 0.52)],
+    )
+    assert "ambiguous_pairs" in prompt
+    assert "pair_groupings" in prompt
+    assert "alpha betas" in prompt

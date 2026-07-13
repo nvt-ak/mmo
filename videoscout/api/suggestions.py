@@ -4,7 +4,7 @@ Implements Section 3 API contract.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 import logging
 import uuid
@@ -12,6 +12,7 @@ import uuid
 from videoscout.db import get_db
 from videoscout.db.models import (
     SuggestionModel,
+    TrendClusterModel,
     LearningEventModel,
     ChannelModel,
     ChannelKeywordLinkModel,
@@ -78,41 +79,61 @@ async def list_suggestions(
         sort_column = sort_column.asc()
     
     items = query.order_by(sort_column).limit(limit).offset(offset).all()
+
+    cluster_ids = {item.cluster_id for item in items if item.cluster_id}
+    clusters_by_id: Dict[uuid.UUID, TrendClusterModel] = {}
+    if cluster_ids:
+        for cluster in (
+            db.query(TrendClusterModel)
+            .filter(TrendClusterModel.id.in_(cluster_ids))
+            .all()
+        ):
+            clusters_by_id[cluster.id] = cluster
     
-    suggestions = [
-        Suggestion(
-            id=str(item.id),
-            keyword=item.keyword,
-            status=item.status,
-            final_score=item.final_score,
-            component_scores=item.component_scores,
-            suggested_by=item.suggested_by,
-            keyword_type=item.keyword_type or "beta",
-            discovery_source=item.discovery_source,
-            trend_signals=item.trend_signals,
-            trend_evidence=item.trend_evidence,
-            platform_signals=item.platform_signals,
-            gate_profile=item.gate_profile,
-            tiktok_unverified=bool(item.tiktok_unverified),
-            tiktok_status=item.tiktok_status,
-            tiktok_count_at_suggest=item.tiktok_count_at_suggest,
-            tiktok_stats=item.tiktok_stats,
-            tiktok_checked_at=item.tiktok_checked_at,
-            created_at=item.created_at,
-            approved_at=item.approved_at,
-            rejected_at=item.rejected_at,
-            reject_reason=item.reject_reason,
-            reject_note=item.reject_note,
-            reported_at=item.reported_at,
-            actual_views=item.actual_views,
-            actual_likes=item.actual_likes,
-            actual_comments=item.actual_comments,
-            actual_shares=item.actual_shares,
-            outcome=item.outcome,
-            last_learned_at=item.last_learned_at
+    suggestions = []
+    for item in items:
+        cluster = clusters_by_id.get(item.cluster_id) if item.cluster_id else None
+        member_count = len(cluster.member_keywords) if cluster and cluster.member_keywords else None
+        canonical_keyword = cluster.canonical_keyword if cluster else None
+        suggestions.append(
+            Suggestion(
+                id=str(item.id),
+                keyword=item.keyword,
+                status=item.status,
+                final_score=item.final_score,
+                component_scores=item.component_scores,
+                suggested_by=item.suggested_by,
+                keyword_type=item.keyword_type or "beta",
+                discovery_source=item.discovery_source,
+                trend_signals=item.trend_signals,
+                trend_evidence=item.trend_evidence,
+                platform_signals=item.platform_signals,
+                gate_profile=item.gate_profile,
+                tiktok_unverified=bool(item.tiktok_unverified),
+                tiktok_status=item.tiktok_status,
+                tiktok_count_at_suggest=item.tiktok_count_at_suggest,
+                tiktok_stats=item.tiktok_stats,
+                tiktok_checked_at=item.tiktok_checked_at,
+                created_at=item.created_at,
+                approved_at=item.approved_at,
+                rejected_at=item.rejected_at,
+                reject_reason=item.reject_reason,
+                reject_note=item.reject_note,
+                reported_at=item.reported_at,
+                actual_views=item.actual_views,
+                actual_likes=item.actual_likes,
+                actual_comments=item.actual_comments,
+                actual_shares=item.actual_shares,
+                outcome=item.outcome,
+                last_learned_at=item.last_learned_at,
+                cluster_id=str(item.cluster_id) if item.cluster_id else None,
+                cluster_canonical_keyword=canonical_keyword,
+                cluster_member_count=member_count,
+                is_cluster_canonical=(
+                    canonical_keyword is None or item.keyword == canonical_keyword
+                ),
+            )
         )
-        for item in items
-    ]
     
     return SuggestionListResponse(
         items=suggestions, total=total, limit=limit, offset=offset

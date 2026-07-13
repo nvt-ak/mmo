@@ -64,6 +64,10 @@ class Suggestion(SuggestionBase):
     actual_shares: Optional[int] = None
     outcome: Optional[str] = None
     last_learned_at: Optional[datetime] = None
+    cluster_id: Optional[str] = None
+    cluster_canonical_keyword: Optional[str] = None
+    cluster_member_count: Optional[int] = None
+    is_cluster_canonical: bool = True
 
     class Config:
         from_attributes = True

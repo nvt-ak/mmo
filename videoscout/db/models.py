@@ -48,6 +48,12 @@ class SuggestionModel(Base):
     platform_signals = Column(JSONB, nullable=True)
     gate_profile = Column(String(20), nullable=True)  # light | full
     tiktok_unverified = Column(Boolean, nullable=False, default=False)
+    cluster_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("trend_clusters.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Lifecycle
     status = Column(String(50), nullable=False, default='pending', index=True)
@@ -78,10 +84,27 @@ class SuggestionModel(Base):
     # Relationships
     learning_events = relationship('LearningEventModel', back_populates='suggestion', cascade='all, delete-orphan')
     
+    cluster = relationship("TrendClusterModel", back_populates="members")
+
     __table_args__ = (
         Index('idx_suggestions_status_created', 'status', 'created_at'),
         Index('idx_suggestions_keyword', 'keyword'),
     )
+
+
+class TrendClusterModel(Base):
+    """Near-duplicate keyword grouping from discovery (US-066 / ADR 0014 Phase 2)."""
+
+    __tablename__ = "trend_clusters"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    canonical_keyword = Column(String(255), nullable=False, index=True)
+    member_keyword_ids = Column(JSONB, nullable=False, default=list)
+    member_keywords = Column(JSONB, nullable=False, default=list)
+    pipeline_run_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    members = relationship("SuggestionModel", back_populates="cluster")
 
 
 class LearningEventModel(Base):

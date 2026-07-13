@@ -70,6 +70,10 @@ export interface Suggestion {
   actual_views?: number;
   actual_likes?: number;
   outcome?: string;
+  cluster_id?: string;
+  cluster_canonical_keyword?: string;
+  cluster_member_count?: number;
+  is_cluster_canonical?: boolean;
 }
 
 export interface SuggestionListResponse {

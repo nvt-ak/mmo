@@ -5,7 +5,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -30,7 +30,7 @@ from videoscout.core_engine.trend_evidence import (
     trend_signals_from_evidence,
 )
 from videoscout.db import get_session
-from videoscout.db.models import DiscoveryJobModel, SuggestionModel
+from videoscout.db.models import DiscoveryJobModel, SuggestionModel, TrendClusterModel
 from videoscout.services.tiktok import get_tiktok_service
 
 from videoscout.core_engine.discovery_progress import (
@@ -40,11 +40,21 @@ from videoscout.core_engine.discovery_progress import (
 )
 from videoscout.core_engine.evidence_enrichment import enrich_top_scored, TOP_N_ENRICHMENT
 from videoscout.core_engine.validation_pass import validate_top_scored
+from videoscout.core_engine.trend_cluster import (
+    build_clusters,
+    filter_escalated_ambiguous_pairs,
+    find_pair_candidates,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _upsert_scored_suggestion(db: Session, scored: Dict[str, Any]) -> bool:
+def _upsert_scored_suggestion(
+    db: Session,
+    scored: Dict[str, Any],
+    *,
+    cluster_id: Optional[uuid.UUID] = None,
+) -> bool:
     """Insert or update suggestion. Returns True when inbox should count this keyword."""
     existing = db.query(SuggestionModel).filter(
         SuggestionModel.keyword == scored["keyword"]
@@ -78,6 +88,8 @@ def _upsert_scored_suggestion(db: Session, scored: Dict[str, Any]) -> bool:
             existing.platform_signals = scored.get("platform_signals")
             existing.gate_profile = scored["gate_profile"]
             existing.tiktok_unverified = scored["tiktok_unverified"]
+            if cluster_id is not None:
+                existing.cluster_id = cluster_id
         db.commit()
         return reactivated
 
@@ -102,6 +114,7 @@ def _upsert_scored_suggestion(db: Session, scored: Dict[str, Any]) -> bool:
         platform_signals=scored.get("platform_signals"),
         gate_profile=scored["gate_profile"],
         tiktok_unverified=scored["tiktok_unverified"],
+        cluster_id=cluster_id,
         created_at=datetime.utcnow(),
     )
     db.add(suggestion)
@@ -114,14 +127,44 @@ def _save_keyword_if_new(
     job: DiscoveryJobModel,
     scored: Dict[str, Any],
     keywords_generated: int,
+    *,
+    cluster_registry: Dict[str, TrendClusterModel],
 ) -> int:
     """Upsert one candidate; commit incrementally when a new row is created."""
     if keywords_generated >= MAX_KEYWORDS_PER_JOB:
         return keywords_generated
+
+    cluster_id: Optional[uuid.UUID] = None
+    assignment = scored.get("cluster_assignment")
+    if assignment:
+        canonical = assignment["canonical_keyword"]
+        cluster = cluster_registry.get(canonical)
+        if cluster is None:
+            cluster = TrendClusterModel(
+                canonical_keyword=canonical,
+                member_keywords=assignment["member_keywords"],
+                member_keyword_ids=[],
+                pipeline_run_id=job.id,
+                created_at=datetime.utcnow(),
+            )
+            db.add(cluster)
+            db.flush()
+            cluster_registry[canonical] = cluster
+        cluster_id = cluster.id
+
     try:
-        if _upsert_scored_suggestion(db, scored):
+        if _upsert_scored_suggestion(db, scored, cluster_id=cluster_id):
             keywords_generated += 1
             job.keywords_generated = keywords_generated
+            if cluster_id is not None:
+                cluster = cluster_registry[assignment["canonical_keyword"]]
+                members = (
+                    db.query(SuggestionModel)
+                    .filter(SuggestionModel.cluster_id == cluster_id)
+                    .all()
+                )
+                cluster.member_keyword_ids = [str(member.id) for member in members]
+                cluster.member_keywords = [member.keyword for member in members]
             db.commit()
     except IntegrityError:
         db.rollback()
@@ -313,18 +356,39 @@ async def run_trend_discovery(
                 top_n=TOP_N_ENRICHMENT,
             )
             _commit_job_progress(db, job, progress_phase="validate")
-            all_scored = await validate_top_scored(
+            ranked_preview = sorted(
+                all_scored,
+                key=lambda row: row.get("final_score", 0.0),
+                reverse=True,
+            )
+            top_keywords = {
+                row["keyword"]
+                for row in ranked_preview[:TOP_N_ENRICHMENT]
+            }
+            _, ambiguous_pairs = find_pair_candidates(all_scored)
+            escalated_pairs = filter_escalated_ambiguous_pairs(
+                ambiguous_pairs,
+                escalate_keywords=top_keywords,
+            )
+            all_scored, pair_decisions = await validate_top_scored(
                 all_scored,
                 db=db,
                 top_n=TOP_N_ENRICHMENT,
+                ambiguous_pairs=escalated_pairs,
             )
+            build_clusters(all_scored, llm_pair_decisions=pair_decisions)
             _commit_job_progress(db, job, progress_phase="rank_final")
             all_scored = apply_final_ranking(all_scored)
+            cluster_registry: Dict[str, TrendClusterModel] = {}
             for scored in all_scored[:MAX_KEYWORDS_PER_JOB]:
                 if keywords_generated >= MAX_KEYWORDS_PER_JOB:
                     break
                 keywords_generated = _save_keyword_if_new(
-                    db, job, scored, keywords_generated,
+                    db,
+                    job,
+                    scored,
+                    keywords_generated,
+                    cluster_registry=cluster_registry,
                 )
 
         if _job_was_cancelled(db, job):

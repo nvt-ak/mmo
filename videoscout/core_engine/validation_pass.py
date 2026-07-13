@@ -5,7 +5,7 @@ import copy
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from videoscout.core_engine.llm_config import create_llm_client, get_llm_config
 from videoscout.core_engine.platform_signals import build_platform_signals
 from videoscout.core_engine.search_sample import discovery_validation_enabled
+from videoscout.core_engine.trend_cluster import parse_pair_groupings
 
 logger = logging.getLogger(__name__)
 
@@ -103,11 +104,37 @@ def _heuristic_validation(scored: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _build_validation_prompt(batch_rows: List[Dict[str, Any]]) -> str:
-    payload = {
+def _build_validation_prompt(
+    batch_rows: List[Dict[str, Any]],
+    ambiguous_pairs: Optional[List[Tuple[str, str, float]]] = None,
+) -> str:
+    payload: Dict[str, Any] = {
         "candidates": batch_rows,
         "rubric": load_validation_rubric(),
     }
+    if ambiguous_pairs:
+        payload["ambiguous_pairs"] = [
+            {
+                "keyword_a": keyword_a,
+                "keyword_b": keyword_b,
+                "token_jaccard": round(jaccard, 3),
+            }
+            for keyword_a, keyword_b, jaccard in ambiguous_pairs
+        ]
+
+    pair_groupings_hint = ""
+    if ambiguous_pairs:
+        pair_groupings_hint = """
+  "pair_groupings": [
+    {
+      "keyword_a": "exact keyword",
+      "keyword_b": "exact keyword",
+      "same_pattern": true,
+      "rationale": "1 sentence"
+    }
+  ],
+"""
+
     return f"""Validate keyword evidence for each candidate (delta-only pass).
 
 Return JSON only:
@@ -126,9 +153,11 @@ Return JSON only:
       "risk_flags": [],
       "validation_rationale": "1-2 sentences citing sample stats"
     }}
-  ]
+  ],{pair_groupings_hint}
 }}
 
+For each ambiguous_pair, decide whether both keywords represent the same underlying
+content pattern (same_pattern=true) or distinct opportunities (same_pattern=false).
 Do not change trend, relevance, or specificity. Do not compute final_score.
 
 Batch:
@@ -300,20 +329,58 @@ async def validate_top_scored(
     db: Session,
     top_n: int,
     llm_client: Optional[OpenAI] = None,
-) -> List[Dict[str, Any]]:
-    """Validate enriched top-N rows; pass through others."""
+    ambiguous_pairs: Optional[List[Tuple[str, str, float]]] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+    """Validate enriched top-N rows; pass through others. Returns pair grouping decisions."""
     if not discovery_validation_enabled() or not scored_items:
-        return scored_items
+        return scored_items, {}
 
     ranked = sorted(scored_items, key=lambda row: row.get("final_score", 0.0), reverse=True)
     top_keys = {row["keyword"].lower() for row in ranked[:top_n]}
-    results: List[Dict[str, Any]] = []
+    top_rows = [
+        row
+        for row in ranked
+        if row["keyword"].lower() in top_keys
+        and row.get("trend_evidence", {}).get("schema_version") == "2"
+        and row.get("trend_evidence", {}).get("derived", {}).get("search_sample")
+    ]
 
-    for row in ranked:
-        if row["keyword"].lower() in top_keys and row.get("trend_evidence", {}).get("schema_version") == "2":
-            results.append(
-                await validate_scored_candidate(row, db=db, llm_client=llm_client)
+    validated_map: Dict[str, Dict[str, Any]] = {}
+    pair_decisions: Dict[str, str] = {}
+
+    if top_rows:
+        validations_by_keyword: Dict[str, Dict[str, Any]] = {
+            row["keyword"].lower(): _heuristic_validation(row) for row in top_rows
+        }
+
+        try:
+            llm = llm_client or create_llm_client(db)
+            config = get_llm_config(db)
+            response = _call_llm_json(
+                llm=llm,
+                model=config["model"],
+                prompt=_build_validation_prompt(
+                    [_validation_payload_row(row) for row in top_rows],
+                    ambiguous_pairs,
+                ),
             )
-        else:
-            results.append(row)
-    return results
+            rows = response.get("validations") or []
+            for index, row in enumerate(top_rows):
+                if index < len(rows) and isinstance(rows[index], dict):
+                    validations_by_keyword[row["keyword"].lower()] = _normalize_validation_row(
+                        rows[index]
+                    )
+            pair_decisions = parse_pair_groupings(response.get("pair_groupings") or [])
+        except Exception as exc:
+            logger.warning("Validation LLM batch failed: %s", exc)
+
+        for row in top_rows:
+            validation = validations_by_keyword.get(row["keyword"].lower()) or _heuristic_validation(row)
+            validated_map[row["keyword"].lower()] = apply_validation_result(row, validation)
+
+    results: List[Dict[str, Any]] = []
+    for row in ranked:
+        key = row["keyword"].lower()
+        results.append(validated_map.get(key, row))
+
+    return results, pair_decisions

@@ -41,6 +41,7 @@ export function InboxPage({
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<Suggestion | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedClusters, setExpandedClusters] = useState<Set<string>>(new Set());
 
   const queryKey = ["suggestions", keywordType, status, search];
 
@@ -96,6 +97,67 @@ export function InboxPage({
   });
 
   const items = data?.items ?? [];
+
+  const visibleRows = useMemo(() => {
+    type Row = {
+      item: Suggestion;
+      clusterMeta?: {
+        id: string;
+        count: number;
+        expanded: boolean;
+        isChild?: boolean;
+      };
+    };
+
+    const rows: Row[] = [];
+    const handledClusters = new Set<string>();
+
+    for (const item of items) {
+      if (!item.cluster_id || (item.cluster_member_count ?? 0) < 2) {
+        rows.push({ item });
+        continue;
+      }
+      if (handledClusters.has(item.cluster_id)) {
+        continue;
+      }
+      handledClusters.add(item.cluster_id);
+
+      const members = items.filter((row) => row.cluster_id === item.cluster_id);
+      const canonical =
+        members.find((row) => row.is_cluster_canonical) ??
+        members.find((row) => row.keyword === row.cluster_canonical_keyword) ??
+        members[0];
+      const expanded = expandedClusters.has(item.cluster_id);
+
+      rows.push({
+        item: canonical,
+        clusterMeta: {
+          id: item.cluster_id,
+          count: members.length,
+          expanded,
+        },
+      });
+
+      if (expanded) {
+        for (const member of members) {
+          if (member.id !== canonical.id) {
+            rows.push({
+              item: member,
+              clusterMeta: {
+                id: item.cluster_id,
+                count: members.length,
+                expanded: true,
+                isChild: true,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    return rows;
+  }, [items, expandedClusters]);
+
   const allSelected = items.length > 0 && selected.size === items.length;
 
   const toggleAll = () => {
@@ -226,12 +288,14 @@ export function InboxPage({
                 </tr>
               </thead>
               <tbody>
-                {items.map((item, index) => {
+                {visibleRows.map(({ item, clusterMeta }, index) => {
                   const expanded = expandedId === item.id;
                   return (
                   <Fragment key={item.id}>
                   <tr
-                    className="stagger-item border-b border-(--border-subtle) last:border-b-0 hover:bg-(--surface-muted)/60"
+                    className={`stagger-item border-b border-(--border-subtle) last:border-b-0 hover:bg-(--surface-muted)/60${
+                      clusterMeta?.isChild ? " bg-(--surface-muted)/30" : ""
+                    }`}
                     style={{ ["--stagger-index" as string]: index }}
                   >
                     {status === "pending" && (
@@ -245,12 +309,32 @@ export function InboxPage({
                       </td>
                     )}
                     <td className="max-w-md px-4 py-3.5 font-medium text-(--foreground-strong)">
-                      {item.keyword}
-                      {item.tiktok_unverified && (
-                        <span className="ml-2 rounded-(--radius-sm) bg-(--pastel-amber-bg) px-1.5 py-0.5 font-mono text-[0.65rem] uppercase text-(--pastel-amber-text)">
-                          unverified
-                        </span>
-                      )}
+                      <div className={clusterMeta?.isChild ? "pl-6" : undefined}>
+                        {item.keyword}
+                        {clusterMeta && !clusterMeta.isChild && clusterMeta.count > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedClusters((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(clusterMeta.id)) next.delete(clusterMeta.id);
+                                else next.add(clusterMeta.id);
+                                return next;
+                              })
+                            }
+                            className="ml-2 rounded-(--radius-sm) bg-(--pastel-blue-bg) px-1.5 py-0.5 font-mono text-[0.65rem] uppercase text-(--pastel-blue-text)"
+                          >
+                            {clusterMeta.expanded
+                              ? `${clusterMeta.count} variants`
+                              : `+${clusterMeta.count - 1} variants`}
+                          </button>
+                        )}
+                        {item.tiktok_unverified && (
+                          <span className="ml-2 rounded-(--radius-sm) bg-(--pastel-amber-bg) px-1.5 py-0.5 font-mono text-[0.65rem] uppercase text-(--pastel-amber-text)">
+                            unverified
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3.5">
                       <ScoreBadge score={item.final_score} />

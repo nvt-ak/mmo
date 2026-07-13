@@ -114,8 +114,10 @@ Tier 2–4 fields over v1).
 
 Channel-first `api/scan` deprecated as primary path. TikTok is evaluation layer only.
 
-**Not yet implemented (ADR 0014 roadmap):** Trend Cluster entity + suggested
-aliases (Phase 2, draft US-066), Opportunity Assessment — Durability,
+**Implemented (ADR 0014 Phase 2):** Trend Cluster entity + heuristic dedup before
+inbox persist (`trend_cluster.py`, `trend_clusters` table, inbox grouping).
+
+**Not yet implemented (ADR 0014 roadmap):** suggested aliases polish,
 Dependency Risk (Phase 3, draft US-067).
 
 ### M7 Profile Distribution (R7)
