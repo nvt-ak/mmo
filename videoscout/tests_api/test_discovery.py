@@ -379,7 +379,7 @@ async def test_trend_discovery_worker_upserts(db_session, mock_trending):
         assert len(rows) >= 1
         assert any(r.discovery_source == "youtube_trend" for r in rows)
         assert any(
-            r.trend_evidence and r.trend_evidence.get("schema_version") == "1"
+            r.trend_evidence and r.trend_evidence.get("schema_version") in ("1", "2")
             for r in rows
         )
     finally:

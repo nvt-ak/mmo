@@ -172,8 +172,12 @@ Tradeoffs:
 | Sprint | Scope | Story |
 | --- | --- | --- |
 | 1 | TrendEvidence v1, velocity raw + percentile, logging/replay | US-062 |
-| 2 | Top-10 enrichment, Tier-1 channel, supply pressure + creator diversity | US-063 (draft) |
+| 2 | Top-10 enrichment, Tier-1 channel, supply pressure + creator diversity | US-063 |
 | 3 | Dual-source velocity feed, LifecycleClassifier, history prior | US-064 |
+| 4 | Search-sample evidence, Population Context, Representation Quality, Validation pass — see **ADR 0014** | US-065 |
 
 Cheap pre-code experiment: backfill velocity on 50 trending videos; manual label
 30 keywords; check velocity percentile vs early/stable/late/noise before wiring scorer.
+
+Sprint 4 pre-code experiment (ADR 0014): label 50 keywords viral-riding vs
+reproducible; verify search-sample median + `viral_outlier` + validation flags.

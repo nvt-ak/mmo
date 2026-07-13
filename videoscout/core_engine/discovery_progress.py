@@ -19,6 +19,7 @@ PHASE_LABELS = {
     "score_nurture": "Scoring nurture keywords…",
     "score_beta": "Scoring beta keywords…",
     "enrich_top": "Enriching top keywords…",
+    "validate": "Validating keyword evidence…",
     "rank_final": "Final ranking…",
     "complete": "Discovery complete",
     "failed": "Discovery failed",
@@ -47,7 +48,7 @@ def _running_percent(
     )
     keyword_pct = int(15 * min(keywords, MAX_KEYWORDS_PER_JOB) / MAX_KEYWORDS_PER_JOB)
 
-    if phase in ("score_beta", "score_nurture", "enrich_top", "rank_final"):
+    if phase in ("score_beta", "score_nurture", "enrich_top", "validate", "rank_final"):
         return min(75 + int(20 * keywords / MAX_KEYWORDS_PER_JOB), 95)
 
     return min(max(video_pct + candidate_pct + keyword_pct, 5), 94)
@@ -65,6 +66,8 @@ def _running_label(
         return PHASE_LABELS["fetch_velocity"]
     if phase == "rank_final":
         return PHASE_LABELS["rank_final"]
+    if phase == "validate":
+        return PHASE_LABELS["validate"]
     if phase == "score_beta":
         return PHASE_LABELS["score_beta"]
     if phase == "score_nurture":

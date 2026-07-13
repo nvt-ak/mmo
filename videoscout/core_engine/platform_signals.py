@@ -18,6 +18,7 @@ def build_platform_signals(
     risk_flags: Optional[list] = None,
     blend: Optional[Dict[str, Any]] = None,
     lifecycle_stage: Optional[str] = None,
+    validation: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     trend_signals = dict(candidate.get("trend_signals") or {})
     trend_evidence = dict(candidate.get("trend_evidence") or {})
@@ -64,6 +65,16 @@ def build_platform_signals(
         agent_block["blend"] = blend
     if lifecycle_stage:
         agent_block["lifecycle_stage"] = lifecycle_stage
+    if validation:
+        agent_block["validation"] = validation
+
+    search_sample = (trend_evidence.get("derived") or {}).get("search_sample")
+    if search_sample:
+        youtube_block["search_sample_youtube"] = (search_sample.get("youtube") or {})
+        youtube_block["search_sample_tiktok"] = (search_sample.get("tiktok") or {})
+    representation = (trend_evidence.get("derived") or {}).get("representation_quality")
+    if representation:
+        youtube_block["representation_quality"] = representation
 
     return {
         "tiktok": {

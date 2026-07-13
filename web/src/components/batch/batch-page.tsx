@@ -65,6 +65,7 @@ export function BatchPage() {
 
   const items = data?.items ?? [];
   const allSelected = items.length > 0 && selected.size === items.length;
+  const selectable = status === "pending";
 
   const toggleAll = () => {
     if (allSelected) setSelected(new Set());
@@ -81,7 +82,7 @@ export function BatchPage() {
   };
 
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
-  const canBulkAct = status === "pending" && selectedIds.length > 0;
+  const canBulkAct = selectable && selectedIds.length > 0;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -136,7 +137,7 @@ export function BatchPage() {
         </ActionBar>
       )}
 
-      <div className="flex-1 px-8 py-6">
+      <div className="flex-1 overflow-auto px-8 py-6">
         {isLoading && <p className="text-sm text-(--muted)">Loading videos</p>}
         {isError && (
           <div className="surface-card bg-(--pastel-red-bg) px-4 py-3 text-sm text-(--pastel-red-text)">
@@ -155,34 +156,60 @@ export function BatchPage() {
           />
         )}
 
-        {items.length > 0 && status === "pending" && (
-          <label className="mb-5 flex items-center gap-2 text-sm text-(--muted)">
-            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-            Select all
-          </label>
+        {items.length > 0 && (
+          <div className="surface-card overflow-hidden animate-fade-rise">
+            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-(--border) bg-(--surface-muted) text-xs uppercase tracking-wider text-(--muted)">
+                  {selectable && (
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleAll}
+                        aria-label="Select all"
+                      />
+                    </th>
+                  )}
+                  <th className="w-16 px-4 py-3 font-medium">Preview</th>
+                  <th className="px-4 py-3 font-medium">Title</th>
+                  <th className="px-4 py-3 font-medium">Keyword</th>
+                  <th className="px-4 py-3 font-medium">Channel</th>
+                  <th className="px-4 py-3 font-medium">Views</th>
+                  <th className="px-4 py-3 font-medium">Duration</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((video, index) => (
+                  <VideoRow
+                    key={video.id}
+                    video={video}
+                    index={index}
+                    selectable={selectable}
+                    selected={selected.has(video.id)}
+                    onToggle={() => toggleOne(video.id)}
+                    onKeep={() => reviewMutation.mutate({ id: video.id, action: "keep" })}
+                    onSkip={() => reviewMutation.mutate({ id: video.id, action: "skip" })}
+                    busy={reviewMutation.isPending}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
 
-        <div className="grid gap-5 sm:grid-cols-2 2xl:grid-cols-3">
-          {items.map((video, index) => (
-            <VideoCard
-              key={video.id}
-              index={index}
-              video={video}
-              selectable={status === "pending"}
-              selected={selected.has(video.id)}
-              onToggle={() => toggleOne(video.id)}
-              onKeep={() => reviewMutation.mutate({ id: video.id, action: "keep" })}
-              onSkip={() => reviewMutation.mutate({ id: video.id, action: "skip" })}
-              busy={reviewMutation.isPending}
-            />
-          ))}
-        </div>
+        {data && data.total > items.length && (
+          <p className="mt-4 font-mono text-xs text-(--muted)">
+            Showing {items.length} of {data.total}
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
-function VideoCard({
+function VideoRow({
   video,
   index,
   selectable,
@@ -202,66 +229,83 @@ function VideoCard({
   busy: boolean;
 }) {
   return (
-    <article
-      className="surface-card stagger-item overflow-hidden"
+    <tr
+      className="stagger-item border-b border-(--border-subtle) last:border-b-0 hover:bg-(--surface-muted)/60"
       style={{ ["--stagger-index" as string]: index }}
     >
-      <div className="relative aspect-video bg-(--surface-muted)">
-        {video.thumbnail_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={video.thumbnail_url}
-            alt={video.title}
-            className="h-full w-full object-cover"
+      {selectable && (
+        <td className="px-4 py-3.5">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            aria-label={`Select ${video.title}`}
           />
-        ) : (
-          <div className="flex h-full items-center justify-center text-xs text-(--muted)">
-            No preview
-          </div>
-        )}
-        {selectable && (
-          <label className="absolute left-3 top-3 rounded-(--radius-sm) border border-(--border) bg-(--surface)/95 p-1.5">
-            <input type="checkbox" checked={selected} onChange={onToggle} />
-          </label>
-        )}
-      </div>
-      <div className="space-y-3 p-5">
-        <h2 className="line-clamp-2 text-sm font-medium leading-snug text-(--foreground-strong)">
-          {video.title}
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          {video.keyword && <span className="tag-pill tag-blue">{video.keyword}</span>}
-          <span className="tag-pill bg-(--surface-muted) text-(--muted)">
-            {video.channel_name ?? "Unknown channel"}
-          </span>
+        </td>
+      )}
+      <td className="px-4 py-3.5">
+        <div className="h-10 w-16 overflow-hidden rounded-(--radius-sm) bg-(--surface-muted)">
+          {video.thumbnail_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={video.thumbnail_url}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-[0.6rem] text-(--muted)">
+              —
+            </div>
+          )}
         </div>
-        <p className="font-mono text-xs text-(--muted)">
-          {formatViews(video.view_count)} views · {formatDuration(video.duration_sec)}
-        </p>
-        {selectable && (
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onKeep} disabled={busy} className="btn btn-primary flex-1">
-              Keep
-            </button>
-            <button
-              type="button"
-              onClick={onSkip}
-              disabled={busy}
-              className="btn btn-secondary flex-1"
-            >
-              Skip
-            </button>
-          </div>
+      </td>
+      <td className="max-w-xs px-4 py-3.5 font-medium text-(--foreground-strong)">
+        <span className="line-clamp-2">{video.title}</span>
+      </td>
+      <td className="px-4 py-3.5">
+        {video.keyword ? (
+          <span className="tag-pill tag-blue">{video.keyword}</span>
+        ) : (
+          <span className="text-(--muted)">—</span>
         )}
-        <a
-          href={video.youtube_url}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-block text-xs text-(--pastel-blue-text) hover:underline"
-        >
-          Open source video
-        </a>
-      </div>
-    </article>
+      </td>
+      <td className="max-w-[10rem] truncate px-4 py-3.5 text-(--muted)">
+        {video.channel_name ?? "Unknown"}
+      </td>
+      <td className="px-4 py-3.5 font-mono text-xs">{formatViews(video.view_count)}</td>
+      <td className="px-4 py-3.5 font-mono text-xs">{formatDuration(video.duration_sec)}</td>
+      <td className="px-4 py-3.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {selectable && (
+            <>
+              <button
+                type="button"
+                onClick={onKeep}
+                disabled={busy}
+                className="btn btn-primary px-2 py-1 text-xs"
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                onClick={onSkip}
+                disabled={busy}
+                className="btn btn-secondary px-2 py-1 text-xs"
+              >
+                Skip
+              </button>
+            </>
+          )}
+          <a
+            href={video.youtube_url}
+            target="_blank"
+            rel="noreferrer"
+            className="btn btn-ghost px-2 py-1 text-xs text-(--pastel-blue-text)"
+          >
+            YouTube
+          </a>
+        </div>
+      </td>
+    </tr>
   );
 }

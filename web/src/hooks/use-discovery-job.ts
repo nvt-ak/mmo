@@ -22,6 +22,10 @@ export function useDiscoveryJob({ onComplete }: UseDiscoveryJobOptions = {}) {
   const [isTracking, setIsTracking] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  });
 
   const cleanupStream = useCallback(() => {
     unsubscribeRef.current?.();
@@ -36,9 +40,9 @@ export function useDiscoveryJob({ onComplete }: UseDiscoveryJobOptions = {}) {
       clearActiveDiscoveryJob();
       cleanupStream();
       void queryClient.invalidateQueries({ queryKey: ["suggestions"] });
-      onComplete?.();
+      onCompleteRef.current?.();
     },
-    [cleanupStream, onComplete, queryClient],
+    [cleanupStream, queryClient],
   );
 
   const finishError = useCallback(
@@ -67,6 +71,11 @@ export function useDiscoveryJob({ onComplete }: UseDiscoveryJobOptions = {}) {
     [cleanupStream, finishError, finishSuccess],
   );
 
+  const attachToJobRef = useRef(attachToJob);
+  useEffect(() => {
+    attachToJobRef.current = attachToJob;
+  });
+
   useEffect(() => {
     let cancelled = false;
 
@@ -79,7 +88,7 @@ export function useDiscoveryJob({ onComplete }: UseDiscoveryJobOptions = {}) {
         if (cancelled) return;
         if (isDiscoveryJobInProgress(job.status)) {
           setProgress(job);
-          attachToJob(active.jobId, false);
+          attachToJobRef.current(active.jobId, false);
         } else {
           clearActiveDiscoveryJob();
         }
@@ -94,7 +103,7 @@ export function useDiscoveryJob({ onComplete }: UseDiscoveryJobOptions = {}) {
       cancelled = true;
       cleanupStream();
     };
-  }, [attachToJob, cleanupStream]);
+  }, [cleanupStream]);
 
   return {
     progress,

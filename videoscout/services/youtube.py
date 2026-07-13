@@ -311,11 +311,24 @@ class YouTubeService:
         *,
         max_results: int = 25,
         days: int = 7,
-    ) -> List[Dict]:
-        """Search recent YouTube videos by keyword (supply-pressure round-trip)."""
+    ) -> Dict:
+        """Search recent YouTube videos by keyword (search-sample enrichment)."""
         keyword = (keyword or "").strip()
+        empty = {
+            "videos": [],
+            "population_context": {
+                "sample_size": 0,
+                "estimated_result_count": 0,
+                "query_used": keyword,
+                "search_order": "date",
+                "time_window_days": days,
+                "ranking_bias": "recency_ranked",
+                "newest_upload": None,
+                "oldest_upload": None,
+            },
+        }
         if not keyword:
-            return []
+            return empty
 
         published_after = (
             datetime.now(timezone.utc) - timedelta(days=days)
@@ -336,6 +349,8 @@ class YouTubeService:
                 publishedAfter=published_after,
                 relevanceLanguage="en",
             ).execute()
+            page_info = search_resp.get("pageInfo") or {}
+            estimated_total = int(page_info.get("totalResults") or 0)
             video_ids: List[str] = []
             snippets: Dict[str, Dict] = {}
             for item in search_resp.get("items", []):
@@ -351,7 +366,9 @@ class YouTubeService:
                 }
 
             if not video_ids:
-                return []
+                ctx = dict(empty["population_context"])
+                ctx["estimated_result_count"] = estimated_total
+                return {"videos": [], "population_context": ctx}
 
             stats_resp = self.client.videos().list(
                 part="statistics",
@@ -363,14 +380,18 @@ class YouTubeService:
             }
 
             results: List[Dict] = []
+            published_times: List[str] = []
             for video_id in video_ids:
                 snippet = snippets[video_id]
+                published_at = snippet.get("published_at")
+                if published_at:
+                    published_times.append(published_at)
                 stats = stats_by_id.get(video_id, {})
                 results.append({
                     "video_id": video_id,
                     "title": snippet.get("title", ""),
                     "channel_id": snippet.get("channel_id", ""),
-                    "published_at": snippet.get("published_at"),
+                    "published_at": published_at,
                     "view_count": int(stats.get("viewCount") or 0),
                 })
             logger.info(
@@ -378,10 +399,24 @@ class YouTubeService:
                 len(results),
                 keyword,
             )
-            return results
+            newest = max(published_times) if published_times else None
+            oldest = min(published_times) if published_times else None
+            return {
+                "videos": results,
+                "population_context": {
+                    "sample_size": len(results),
+                    "estimated_result_count": estimated_total,
+                    "query_used": keyword,
+                    "search_order": "date",
+                    "time_window_days": days,
+                    "ranking_bias": "recency_ranked",
+                    "newest_upload": newest,
+                    "oldest_upload": oldest,
+                },
+            }
         except Exception as e:
             logger.error("YouTube video search failed for %r: %s", keyword, e)
-            return []
+            return empty
 
     def get_trending_videos(
         self,

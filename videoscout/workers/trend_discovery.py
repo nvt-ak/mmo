@@ -38,7 +38,8 @@ from videoscout.core_engine.discovery_progress import (
     TRENDING_VIDEO_LIMIT,
     VELOCITY_VIDEO_LIMIT,
 )
-from videoscout.core_engine.evidence_enrichment import enrich_top_scored
+from videoscout.core_engine.evidence_enrichment import enrich_top_scored, TOP_N_ENRICHMENT
+from videoscout.core_engine.validation_pass import validate_top_scored
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +310,13 @@ async def run_trend_discovery(
                 all_scored,
                 db=db,
                 engine=engine,
+                top_n=TOP_N_ENRICHMENT,
+            )
+            _commit_job_progress(db, job, progress_phase="validate")
+            all_scored = await validate_top_scored(
+                all_scored,
+                db=db,
+                top_n=TOP_N_ENRICHMENT,
             )
             _commit_job_progress(db, job, progress_phase="rank_final")
             all_scored = apply_final_ranking(all_scored)

@@ -75,13 +75,37 @@ def test_merge_enrichment_sets_tier_and_supply_pressure():
     merged = merge_enrichment_into_evidence(
         evidence,
         channel_raw={"tier": 1, "channel_id": "UC_known", "subscriber_count": 5000},
-        youtube_search_raw={"keyword": "business tips", "days": 7, "videos": []},
+        youtube_search_raw={
+            "keyword": "business tips",
+            "days": 7,
+            "videos": [
+                {
+                    "video_id": "v1",
+                    "title": "Business Tips Today",
+                    "channel_id": "c1",
+                    "view_count": 1000,
+                    "published_at": "2026-07-01T00:00:00Z",
+                }
+            ],
+            "population_contexts": [{
+                "sample_size": 1,
+                "estimated_result_count": 5000,
+                "query_used": "business tips",
+                "search_order": "date",
+                "time_window_days": 7,
+                "ranking_bias": "recency_ranked",
+            }],
+        },
         tiktok_raw={"keyword": "business tips", "total_count": 5, "videos": []},
         supply_pressure={"pressure_score": 0.4},
+        keyword="business tips",
+        source_title="Business Tips Today",
     )
+    assert merged["schema_version"] == "2"
     assert merged["metadata"]["enrichment_tier"] == 2
     assert merged["raw"]["channel"]["tier"] == 1
     assert merged["derived"]["supply_pressure"]["pressure_score"] == 0.4
+    assert merged["derived"]["search_sample"]["youtube"]["sample_size"] == 1
     assert "lifecycle" not in merged
 
 
@@ -128,8 +152,8 @@ async def test_enrich_top_scored_only_top_n(db_session):
             scored,
             db=db_session,
             engine=engine,
-            top_n=TOP_N_ENRICHMENT,
+            top_n=10,
         )
-    assert mock_enrich.await_count == TOP_N_ENRICHMENT
+    assert mock_enrich.await_count == 10
     enriched_count = sum(1 for row in result if row.get("enriched"))
-    assert enriched_count == TOP_N_ENRICHMENT
+    assert enriched_count == 10

@@ -6,7 +6,8 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
+SCHEMA_VERSION_V1 = "1"
 
 SOURCE_MOST_POPULAR = "youtube_most_popular"
 SOURCE_VELOCITY = "youtube_velocity"
@@ -233,6 +234,6 @@ def replay_evidence(payload: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any
     """Load stored TrendEvidence for debug/replay."""
     if not payload:
         return None
-    if payload.get("schema_version") != SCHEMA_VERSION:
+    if payload.get("schema_version") not in (SCHEMA_VERSION, SCHEMA_VERSION_V1):
         return payload
     return dict(payload)

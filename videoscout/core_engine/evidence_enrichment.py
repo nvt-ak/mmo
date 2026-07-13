@@ -1,4 +1,4 @@
-"""Top-N TrendEvidence enrichment — Tier-1 channel + round-trip validation (US-063)."""
+"""Top-N TrendEvidence enrichment — search sample + validation (US-063 / US-065)."""
 from __future__ import annotations
 
 import copy
@@ -8,13 +8,19 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from videoscout.core_engine.engine import SuggestionEngine
+from videoscout.core_engine.search_sample import (
+    build_search_queries,
+    dedupe_videos,
+    merge_search_sample_evidence,
+    top_n_validation_limit,
+)
 from videoscout.core_engine.trend_evidence import serialize_evidence
 from videoscout.db.models import ChannelModel
 from videoscout.services.youtube import get_youtube_service
 
 logger = logging.getLogger(__name__)
 
-TOP_N_ENRICHMENT = 10
+TOP_N_ENRICHMENT = top_n_validation_limit()
 YOUTUBE_SEARCH_MAX_RESULTS = 25
 TIKTOK_DEEP_LIMIT = 50
 
@@ -62,7 +68,7 @@ def compute_supply_pressure(
     youtube_videos: List[Dict[str, Any]],
     tiktok_result: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Derived supply/demand pressure from cross-platform search."""
+    """Rank-time supply pressure (cross-platform); not merged into search_sample LLM payload."""
     yt = _creator_diversity(youtube_videos, "channel_id")
     tt_videos = list((tiktok_result or {}).get("videos") or [])
     tt = _creator_diversity(tt_videos, "author_id")
@@ -72,7 +78,6 @@ def compute_supply_pressure(
     combined_creators = yt["unique_creators"] + tt["unique_creators"]
     combined_videos = yt_count + tt_count
 
-    # Higher pressure when many videos but few distinct creators (one-off viral pattern).
     if combined_videos == 0:
         pressure_score = 0.0
     else:
@@ -100,6 +105,9 @@ def merge_enrichment_into_evidence(
     youtube_search_raw: Optional[Dict[str, Any]],
     tiktok_raw: Optional[Dict[str, Any]],
     supply_pressure: Optional[Dict[str, Any]],
+    search_queries_used: Optional[List[str]] = None,
+    source_title: str = "",
+    keyword: str = "",
 ) -> Dict[str, Any]:
     merged = copy.deepcopy(evidence)
     raw = dict(merged.get("raw") or {})
@@ -112,6 +120,45 @@ def merge_enrichment_into_evidence(
         raw["youtube_search"] = youtube_search_raw
     if tiktok_raw is not None:
         raw["tiktok"] = tiktok_raw
+
+    youtube_videos = list((youtube_search_raw or {}).get("videos") or [])
+    tiktok_videos = list((tiktok_raw or {}).get("videos") or [])
+    yt_contexts = list((youtube_search_raw or {}).get("population_contexts") or [])
+    if not yt_contexts and youtube_search_raw:
+        ctx = (youtube_search_raw or {}).get("population_context")
+        if ctx:
+            yt_contexts = [ctx]
+
+    tt_context = None
+    if tiktok_raw:
+        tt_context = {
+            "sample_size": int(tiktok_raw.get("total_count") or len(tiktok_videos)),
+            "estimated_result_count": int(tiktok_raw.get("total_count") or 0),
+            "query_used": tiktok_raw.get("keyword") or keyword,
+            "search_order": "relevance",
+            "time_window_days": 7,
+            "ranking_bias": "platform_search_sample",
+            "newest_upload": None,
+            "oldest_upload": None,
+        }
+
+    merged["raw"] = raw
+
+    if youtube_videos or tiktok_videos:
+        merged = merge_search_sample_evidence(
+            merged,
+            youtube_videos=youtube_videos,
+            youtube_population_contexts=yt_contexts,
+            tiktok_videos=tiktok_videos,
+            tiktok_population_context=tt_context,
+            search_queries_used=search_queries_used or [keyword],
+            source_title=source_title,
+            keyword=keyword,
+        )
+        raw = dict(merged.get("raw") or raw)
+        derived = dict(merged.get("derived") or derived)
+        metadata = dict(merged.get("metadata") or metadata)
+
     if supply_pressure is not None:
         derived["supply_pressure"] = supply_pressure
 
@@ -128,28 +175,61 @@ def merge_enrichment_into_evidence(
     return serialize_evidence(merged)
 
 
+async def _fetch_youtube_search_samples(
+    queries: List[str],
+    *,
+    max_results: int,
+    days: int,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    youtube = get_youtube_service()
+    video_lists: List[List[Dict[str, Any]]] = []
+    contexts: List[Dict[str, Any]] = []
+    for query in queries:
+        try:
+            result = youtube.search_videos_by_keyword(
+                query,
+                max_results=max_results,
+                days=days,
+            )
+        except Exception as exc:
+            logger.warning("YouTube search failed for %r: %s", query, exc)
+            continue
+        if isinstance(result, dict):
+            video_lists.append(list(result.get("videos") or []))
+            ctx = result.get("population_context")
+            if ctx:
+                contexts.append(dict(ctx))
+        elif isinstance(result, list):
+            video_lists.append(result)
+    return dedupe_videos(video_lists), contexts
+
+
 async def enrich_scored_candidate(
     scored: Dict[str, Any],
     *,
     db: Session,
     engine: SuggestionEngine,
 ) -> Dict[str, Any]:
-    """Tier-1 + tier-2 enrichment for one scored keyword."""
+    """Tier-1 + tier-2 enrichment with search-sample evidence (schema v2)."""
     evidence = scored.get("trend_evidence")
     if not evidence:
         return scored
 
     youtube_block = (evidence.get("raw") or {}).get("youtube") or {}
     channel_id = youtube_block.get("channel_id")
+    source_title = str(youtube_block.get("source_title") or "")
     keyword = scored["keyword"]
 
     channel_raw = load_tier1_channel(db, channel_id)
+    search_queries = build_search_queries(keyword, source_title)
 
     youtube_videos: List[Dict[str, Any]] = []
+    population_contexts: List[Dict[str, Any]] = []
     try:
-        youtube_videos = get_youtube_service().search_videos_by_keyword(
-            keyword,
+        youtube_videos, population_contexts = await _fetch_youtube_search_samples(
+            search_queries,
             max_results=YOUTUBE_SEARCH_MAX_RESULTS,
+            days=7,
         )
     except Exception as exc:
         logger.warning("YouTube enrichment failed for %r: %s", keyword, exc)
@@ -158,18 +238,22 @@ async def enrich_scored_candidate(
         "keyword": keyword,
         "days": 7,
         "videos": youtube_videos,
+        "population_contexts": population_contexts,
+        "population_context": population_contexts[0] if population_contexts else None,
+        "queries_used": search_queries,
     }
 
     tiktok_raw: Optional[Dict[str, Any]] = None
+    primary_query = search_queries[0] if search_queries else keyword
     try:
         tiktok_result = await engine.tiktok.search_videos_async(
-            keyword,
+            primary_query,
             period="7d",
             limit=TIKTOK_DEEP_LIMIT,
         )
         if isinstance(tiktok_result, dict) and not tiktok_result.get("error"):
             tiktok_raw = {
-                "keyword": keyword,
+                "keyword": primary_query,
                 "period": "7d",
                 "total_count": tiktok_result.get("total_count", 0),
                 "avg_views": tiktok_result.get("avg_views", 0.0),
@@ -192,6 +276,9 @@ async def enrich_scored_candidate(
         youtube_search_raw=youtube_search_raw,
         tiktok_raw=tiktok_raw,
         supply_pressure=supply_pressure,
+        search_queries_used=search_queries,
+        source_title=source_title,
+        keyword=keyword,
     )
 
     updated = dict(scored)
@@ -230,14 +317,15 @@ async def enrich_top_scored(
     *,
     db: Session,
     engine: SuggestionEngine,
-    top_n: int = TOP_N_ENRICHMENT,
+    top_n: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Enrich top-N by final_score; pass through the rest unchanged."""
     if not scored_items:
         return []
 
+    limit = top_n if top_n is not None else TOP_N_ENRICHMENT
     ranked = sorted(scored_items, key=lambda row: row.get("final_score", 0.0), reverse=True)
-    top_keys = {row["keyword"].lower() for row in ranked[:top_n]}
+    top_keys = {row["keyword"].lower() for row in ranked[:limit]}
 
     enriched: List[Dict[str, Any]] = []
     for row in ranked:

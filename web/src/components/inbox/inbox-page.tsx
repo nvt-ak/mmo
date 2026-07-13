@@ -1,14 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, Fragment } from "react";
+import { useCallback, useMemo, useState, Fragment } from "react";
 import { api } from "@/lib/api/client";
 import type { RejectReason, Suggestion, SuggestionStatus, KeywordType, KeywordTypeFilter } from "@/lib/api/types";
 import { ActionBar } from "@/components/shared/action-bar";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScoreBadge } from "@/components/shared/score-badge";
-import { KeywordScanButton } from "@/components/shared/keyword-scan-button";
+import { useKeywordScan } from "@/components/shared/keyword-scan-button";
 import { TabBar } from "@/components/shared/tab-bar";
 import { SuggestionInsightPanel } from "./suggestion-insight-panel";
 import { RejectModal } from "./reject-modal";
@@ -114,25 +114,26 @@ export function InboxPage({
 
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
 
+  const onDiscoveryComplete = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["suggestions"] });
+    setStatus("pending");
+  }, [queryClient]);
+
+  const discovery = useKeywordScan({
+    keywordTypeFilter: discoveryFilter ?? keywordType,
+    label:
+      discoveryFilter === "both" || discoveryFilter === undefined
+        ? "Run trend discovery"
+        : "Discover",
+    onComplete: onDiscoveryComplete,
+  });
+
   return (
     <div className="flex flex-1 flex-col">
       <PageHeader
         title={title}
         description={description}
-        actions={
-          <KeywordScanButton
-            keywordTypeFilter={discoveryFilter ?? keywordType}
-            label={
-              discoveryFilter === "both" || discoveryFilter === undefined
-                ? "Run trend discovery"
-                : "Discover"
-            }
-            onComplete={() => {
-              invalidate();
-              setStatus("pending");
-            }}
-          />
-        }
+        actions={discovery.actions}
         toolbar={
           <input
             type="search"
@@ -153,6 +154,12 @@ export function InboxPage({
           />
         }
       />
+
+      {discovery.status && (
+        <div className="border-b border-(--border) bg-(--surface-muted)/40 px-8 py-3">
+          <div className="max-w-xl">{discovery.status}</div>
+        </div>
+      )}
 
       {isFetching && !isLoading && (
         <p className="border-b border-(--border) px-8 py-2 font-mono text-xs text-(--muted)">
