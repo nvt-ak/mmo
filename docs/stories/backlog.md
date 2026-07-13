@@ -56,6 +56,7 @@ Active stories for VideoScout. Create story packets before implementation
 | US-065 | Search-sample evidence + validation pass (Sprint 4, ADR 0014) | E09 | normal | implemented |
 | US-068 | Discovery job cancel + force restart *(renumbered from US-059)* | E09 | tiny | implemented |
 | US-069 | Keyword scoring diversity + platform insights *(renumbered from US-060)* | E09 | normal | implemented |
+| US-066 | Trend Cluster — duplicate keyword grouping (Phase 2) | E09 | normal | planned |
 
 ## Roadmap Phases
 
@@ -77,7 +78,7 @@ Active stories for VideoScout. Create story packets before implementation
 | R7e S2 | Top-N evidence enrichment (ADR 0013) | US-063 |
 | R7e S3 | Dual-source discovery + ranker (ADR 0013) | US-064 |
 | R7e S4 | Search-sample evidence + validation pass (ADR 0014) | US-065 |
-| R7f | Trend Cluster + suggested aliases (ADR 0014 Phase 2) | US-066 (draft, per ADR 0014) |
+| R7f | Trend Cluster + suggested aliases (ADR 0014 Phase 2) | US-066 (planned, story packet drafted 2026-07-13) |
 | R7g | Opportunity Assessment: Trend/Generalizability/Durability/Dependency Risk (ADR 0014 Phase 3) | US-067 (draft, per ADR 0014) |
 | R7d | Trend sources expansion (Google Trends, Reddit, RSS via TrendEvidence `raw.*` + provenance) | TBD |
 | R8 | v2 upload | TBD |
