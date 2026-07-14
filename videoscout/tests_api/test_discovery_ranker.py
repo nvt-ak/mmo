@@ -43,6 +43,10 @@ def test_apply_final_ranking_prefers_early_accelerating():
     assert ranked[0]["keyword"] == early["keyword"]
     assert ranked[0]["lifecycle_stage"] == "early_accelerating"
     assert "lifecycle_stage" in ranked[0]["platform_signals"]["agent"]
+    ranking = ranked[0]["platform_signals"]["agent"]["ranking_adjustments"]
+    assert ranking["pre_ranking_score"] == 0.70
+    assert ranking["lifecycle_delta"] == 0.04
+    assert ranking["post_ranking_score"] == ranked[0]["final_score"]
 
 
 def test_apply_final_ranking_penalizes_high_supply_pressure():
@@ -69,3 +73,33 @@ def test_apply_final_ranking_penalizes_high_supply_pressure():
     ranked = apply_final_ranking([high_pressure, low_pressure])
     assert ranked[0]["keyword"] == low_pressure["keyword"]
     assert ranked[1]["lifecycle_stage"] == "late"
+
+
+def test_apply_final_ranking_boosts_google_trends_breakout():
+    trends_row = _scored(
+        "trends breakout keyword",
+        0.60,
+        {
+            "raw": {
+                "google_trends": {
+                    "interest_index": 85,
+                    "growth_pct": "breakout",
+                    "gprop": "youtube",
+                },
+            },
+            "derived": {},
+        },
+    )
+    plain = _scored(
+        "plain keyword phrase",
+        0.62,
+        {
+            "derived": {
+                "velocity": {"percentile_region_category": 0.5},
+            },
+        },
+    )
+    ranked = apply_final_ranking([plain, trends_row])
+    assert ranked[0]["keyword"] == trends_row["keyword"]
+    ranking = ranked[0]["platform_signals"]["agent"]["ranking_adjustments"]
+    assert ranking["trends_delta"] > 0

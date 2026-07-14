@@ -158,13 +158,6 @@ async def test_score_beta_blend_when_few_reports(db_session):
         "trend": 0.10,
         "video_performance": 0.10,
     }
-    heuristic_final = heuristic_final_score(
-        keyword,
-        gate,
-        candidate=candidate,
-        weights=weights,
-    )
-
     scored = await score_beta_candidate(
         candidate,
         tiktok_gate=gate,
@@ -176,7 +169,7 @@ async def test_score_beta_blend_when_few_reports(db_session):
     blend = scored["trend_signals"]["scoring"]["blend"]
     expected = round(
         blend["llm_weight"] * blend["llm_final"]
-        + blend["heuristic_weight"] * heuristic_final,
+        + blend["heuristic_weight"] * blend["heuristic_final"],
         3,
     )
     assert scored["final_score"] == expected

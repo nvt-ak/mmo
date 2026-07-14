@@ -35,6 +35,38 @@ def test_build_search_queries_strips_generic_tokens():
     assert any("saiyaara" in q for q in queries)
 
 
+def test_build_search_queries_respects_max_queries_literal_only():
+    queries = build_search_queries(
+        "viral trending dance bollywood",
+        "Saiyaara Official Dance #shorts",
+        max_queries=1,
+    )
+    assert queries == ["viral trending dance bollywood"]
+
+
+def test_build_search_queries_max_queries_two_includes_degeneric():
+    queries = build_search_queries(
+        "viral trending dance bollywood",
+        "Saiyaara Official Dance #shorts",
+        max_queries=2,
+    )
+    assert len(queries) == 2
+    assert queries[0] == "viral trending dance bollywood"
+    assert "viral" not in queries[1]
+    assert "dance bollywood" in queries[1]
+
+
+def test_enrichment_max_queries_from_env(monkeypatch):
+    from videoscout.core_engine.search_sample import enrichment_max_queries
+
+    monkeypatch.setenv("ENRICHMENT_MAX_QUERIES", "2")
+    assert enrichment_max_queries() == 2
+    monkeypatch.setenv("ENRICHMENT_MAX_QUERIES", "99")
+    assert enrichment_max_queries() == 4
+    monkeypatch.setenv("ENRICHMENT_MAX_QUERIES", "0")
+    assert enrichment_max_queries() == 1
+
+
 def test_merge_search_sample_sets_schema_v2():
     builder = EvidenceBuilder(pipeline_run_id="job-1", region="DE")
     evidence = serialize_evidence(

@@ -38,6 +38,36 @@ def _supply_pressure_adjustment(evidence: Dict[str, Any]) -> float:
     return 0.0
 
 
+def _trends_adjustment(evidence: Dict[str, Any]) -> float:
+    trends = (evidence.get("raw") or {}).get("google_trends") or {}
+    if not trends:
+        return 0.0
+    delta = 0.0
+    interest = trends.get("interest_index")
+    if interest is not None:
+        interest_val = float(interest)
+        if interest_val >= 80:
+            delta += 0.03
+        elif interest_val >= 50:
+            delta += 0.01
+    growth = trends.get("growth_pct")
+    if growth == "breakout":
+        delta += 0.03
+    elif isinstance(growth, (int, float)) and float(growth) >= 200:
+        delta += 0.02
+    return delta
+
+
+def _agent_blend(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge calibration blend from trend_signals when agent.blend only has spread meta."""
+    agent = (row.get("platform_signals") or {}).get("agent") or {}
+    blend = dict(agent.get("blend") or {})
+    scoring_blend = ((row.get("trend_signals") or {}).get("scoring") or {}).get("blend") or {}
+    if scoring_blend and not blend.get("llm_final"):
+        blend = {**scoring_blend, **blend}
+    return blend
+
+
 def apply_final_ranking(scored_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Re-rank after enrichment using derived lifecycle (not persisted on evidence)."""
     ranked: List[Dict[str, Any]] = []
@@ -48,11 +78,21 @@ def apply_final_ranking(scored_items: List[Dict[str, Any]]) -> List[Dict[str, An
         history = (evidence.get("derived") or {}).get("history_prior") or {}
 
         base = float(updated.get("final_score") or 0.0)
-        adjusted = base
-        adjusted += LIFECYCLE_ADJUSTMENTS.get(lifecycle, 0.0)
-        adjusted += _history_adjustment(history)
-        adjusted += _supply_pressure_adjustment(evidence)
+        lifecycle_delta = LIFECYCLE_ADJUSTMENTS.get(lifecycle, 0.0)
+        history_delta = _history_adjustment(history)
+        supply_delta = _supply_pressure_adjustment(evidence)
+        trends_delta = _trends_adjustment(evidence)
+        adjusted = base + lifecycle_delta + history_delta + supply_delta + trends_delta
         adjusted = round(max(0.0, min(0.98, adjusted)), 3)
+        ranking_adjustments = {
+            "pre_ranking_score": round(base, 3),
+            "lifecycle_stage": lifecycle,
+            "lifecycle_delta": lifecycle_delta,
+            "history_delta": history_delta,
+            "supply_pressure_delta": supply_delta,
+            "trends_delta": trends_delta,
+            "post_ranking_score": adjusted,
+        }
 
         updated["final_score"] = adjusted
         updated["lifecycle_stage"] = lifecycle
@@ -65,6 +105,7 @@ def apply_final_ranking(scored_items: List[Dict[str, Any]]) -> List[Dict[str, An
                 "trend_evidence": evidence,
             }
             agent = dict(updated["platform_signals"].get("agent") or {})
+            blend = _agent_blend(updated)
             tiktok_block = updated["platform_signals"].get("tiktok") or {}
             tiktok_gate = {
                 "tiktok_unverified": tiktok_block.get("unverified", False),
@@ -80,8 +121,9 @@ def apply_final_ranking(scored_items: List[Dict[str, Any]]) -> List[Dict[str, An
                 rationale=agent.get("rationale"),
                 confidence=agent.get("confidence"),
                 risk_flags=list(agent.get("risk_flags") or []),
-                blend=agent.get("blend"),
+                blend=blend,
                 lifecycle_stage=lifecycle,
+                ranking_adjustments=ranking_adjustments,
             )
         ranked.append(updated)
 

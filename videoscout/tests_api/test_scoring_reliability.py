@@ -15,6 +15,7 @@ from videoscout.core_engine.keyword_scorer import (
 from videoscout.core_engine.scoring_rubric import enforce_batch_spread
 from videoscout.core_engine.scoring_validation import (
     calibration_blend_weights,
+    reconcile_heuristic_components_for_blend,
     validate_llm_components,
 )
 
@@ -185,3 +186,54 @@ async def test_score_beta_records_validation_and_ramp(db_session):
     assert "heuristic_components" in blend
     assert blend["heuristic_components"]["relevance"] != 0.5
     assert scored["component_scores"]["saturation"] < 0.9
+    assert scored["platform_signals"]["agent"]["blend"]["llm_final"] == blend["llm_final"]
+
+
+def test_reconcile_heuristic_pulls_overoptimistic_relevance():
+    llm = {
+        "relevance": 0.59,
+        "specificity": 0.654,
+        "saturation": 0.78,
+        "trend": 0.68,
+        "video_performance": 0.53,
+    }
+    heuristic = {
+        "relevance": 0.98,
+        "specificity": 0.855,
+        "saturation": 0.902,
+        "trend": 0.5,
+        "video_performance": 0.775,
+    }
+    reconciled = reconcile_heuristic_components_for_blend(llm, heuristic)
+    assert reconciled["relevance"] < heuristic["relevance"]
+    assert reconciled["relevance"] > llm["relevance"]
+
+    weights = _weights()
+    raw_final = weighted_final_score(heuristic, weights)
+    blend_final = weighted_final_score(reconciled, weights)
+    assert blend_final < raw_final
+
+
+def test_yara_style_scores_stay_below_spread_ladder():
+    """Regression: flat beta batch must not jump to 0.92 via nurture spread ladder."""
+    llm = {
+        "relevance": 0.59,
+        "specificity": 0.654,
+        "saturation": 0.78,
+        "trend": 0.68,
+        "video_performance": 0.53,
+    }
+    heuristic_raw = {
+        "relevance": 0.98,
+        "specificity": 0.855,
+        "saturation": 0.902,
+        "trend": 0.5,
+        "video_performance": 0.775,
+    }
+    weights = _weights()
+    llm_final = weighted_final_score(llm, weights)
+    heur = reconcile_heuristic_components_for_blend(llm, heuristic_raw)
+    heur_final = weighted_final_score(heur, weights)
+    blended = round(BLEND_LLM_WEIGHT * llm_final + BLEND_HEURISTIC_WEIGHT * heur_final, 3)
+    assert blended < 0.80
+    assert blended != 0.92

@@ -35,7 +35,8 @@ def test_iter_scored_source_videos_keeps_sources_separate():
         assert percentiles.get(video["id"]) is not None
 
 
-def test_fetch_discovery_sources_returns_two_feeds(db_session):
+def test_fetch_discovery_sources_returns_two_feeds(db_session, monkeypatch):
+    monkeypatch.setenv("GOOGLE_TRENDS_REPLACE_EMERGENCE", "false")
     popular = [{"id": "p1", "title": "Popular"}]
     velocity = [{"id": "v1", "title": "Velocity"}]
     mock_yt = MagicMock()

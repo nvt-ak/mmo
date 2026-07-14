@@ -18,6 +18,7 @@ from videoscout.core_engine.keyword_scorer import score_beta_candidates_batch
 from videoscout.core_engine.nurture_scorer import score_nurture_candidates_batch
 from videoscout.core_engine.candidate_generator import (
     fetch_discovery_sources,
+    fetch_google_trends_candidates,
     iter_scored_source_videos,
 )
 from videoscout.core_engine.discovery_ranker import apply_final_ranking
@@ -40,6 +41,7 @@ from videoscout.core_engine.discovery_progress import (
     TRENDING_VIDEO_LIMIT,
     VELOCITY_VIDEO_LIMIT,
 )
+from videoscout.services.google_trends import google_trends_enabled
 from videoscout.core_engine.evidence_enrichment import enrich_top_scored, TOP_N_ENRICHMENT
 from videoscout.core_engine.validation_pass import validate_top_scored
 from videoscout.core_engine.trend_cluster import (
@@ -314,6 +316,64 @@ async def run_trend_discovery(
                 })
 
             _commit_job_progress(db, job, videos_scanned=videos_scanned)
+
+        if google_trends_enabled():
+            trends_rows = fetch_google_trends_candidates(
+                db,
+                limit=VELOCITY_VIDEO_LIMIT,
+            )
+            for trends_raw in trends_rows:
+                keyword = str(trends_raw.get("keyword") or "").strip().lower()
+                if not keyword or keyword in seen:
+                    continue
+                seen.add(keyword)
+
+                history_prior = build_history_prior(db, trends_raw["keyword"])
+                trend_evidence = serialize_evidence(
+                    evidence_builder.build_from_trends(
+                        keyword=trends_raw["keyword"],
+                        trends_raw=trends_raw,
+                        history_prior=history_prior,
+                    )
+                )
+                trend_signals = trend_signals_from_evidence(trend_evidence)
+                discovery_source = discovery_source_for_kind("google_trends")
+
+                enriched_candidate = {
+                    "keyword": trends_raw["keyword"],
+                    "discovery_source": discovery_source,
+                    "trend_evidence": trend_evidence,
+                    "trend_signals": {
+                        **trend_signals,
+                        "trends_seed": trends_raw.get("seed_keyword"),
+                    },
+                }
+
+                provisional_type = classify_keyword_type(
+                    enriched_candidate["keyword"],
+                    trend_source=discovery_source,
+                    calibration=calibration,
+                )
+                gate_profile = "light" if provisional_type == "nurture" else "full"
+                tiktok_gate = await engine.check_tiktok_gate(
+                    enriched_candidate["keyword"],
+                    gate_profile,
+                )
+                job.candidates_checked = (job.candidates_checked or 0) + 1
+                db.commit()
+
+                if provisional_type == "beta":
+                    if keyword_type_filter != "nurture":
+                        beta_queue.append({
+                            "candidate": enriched_candidate,
+                            "tiktok_gate": tiktok_gate,
+                        })
+                    continue
+
+                nurture_queue.append({
+                    "candidate": enriched_candidate,
+                    "tiktok_gate": tiktok_gate,
+                })
 
         all_scored: List[Dict[str, Any]] = []
 

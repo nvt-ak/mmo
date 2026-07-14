@@ -11,12 +11,15 @@ SCHEMA_VERSION_V1 = "1"
 
 SOURCE_MOST_POPULAR = "youtube_most_popular"
 SOURCE_VELOCITY = "youtube_velocity"
+SOURCE_GOOGLE_TRENDS = "google_trends"
 CONFIDENCE_POPULARITY = "popularity"
 CONFIDENCE_EMERGENCE = "emergence"
+CONFIDENCE_SEARCH_INTEREST = "search_interest"
 
 PROVENANCE_BY_SOURCE_KIND = {
     "most_popular": (SOURCE_MOST_POPULAR, CONFIDENCE_POPULARITY, "youtube_trend"),
     "velocity": (SOURCE_VELOCITY, CONFIDENCE_EMERGENCE, "youtube_velocity"),
+    "google_trends": (SOURCE_GOOGLE_TRENDS, CONFIDENCE_SEARCH_INTEREST, "google_trends_youtube"),
 }
 
 
@@ -152,9 +155,54 @@ class EvidenceBuilder:
                 "youtube_search": None,
                 "tiktok": None,
                 "channel": None,
+                "google_trends": None,
             },
             "derived": {
                 "velocity": derived_velocity or None,
+                "supply_pressure": None,
+                "history_prior": history_prior,
+            },
+        }
+
+
+    def build_from_trends(
+        self,
+        *,
+        keyword: str,
+        trends_raw: Dict[str, Any],
+        history_prior: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """TrendEvidence for Google Trends rising keyword (no source video)."""
+        provenance_source, confidence_type, _discovery = PROVENANCE_BY_SOURCE_KIND[
+            "google_trends"
+        ]
+        geo = trends_raw.get("geo")
+        if geo is None:
+            geo = self.region
+
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "keyword": keyword,
+            "metadata": {
+                "created_at": _utc_now_iso(),
+                "pipeline_run_id": self.pipeline_run_id,
+                "enrichment_tier": 0,
+            },
+            "provenance": {
+                "source": provenance_source,
+                "confidence_type": confidence_type,
+                "region": geo if geo is not None else "",
+                "detected_at": _utc_now_iso(),
+            },
+            "raw": {
+                "youtube": None,
+                "youtube_search": None,
+                "tiktok": None,
+                "channel": None,
+                "google_trends": dict(trends_raw),
+            },
+            "derived": {
+                "velocity": None,
                 "supply_pressure": None,
                 "history_prior": history_prior,
             },
@@ -181,6 +229,22 @@ class LifecycleClassifier:
         pressure_score = float(supply.get("pressure_score") or 0.0)
 
         if percentile is None:
+            trends = (evidence.get("raw") or {}).get("google_trends") or {}
+            interest = trends.get("interest_index")
+            growth = trends.get("growth_pct")
+            if interest is not None:
+                interest_val = float(interest)
+                if growth == "breakout" or (
+                    isinstance(growth, (int, float)) and float(growth) >= 200
+                ):
+                    return "early_accelerating"
+                if interest_val >= 70:
+                    return "early_accelerating"
+                if interest_val >= 40:
+                    return "stable"
+                if interest_val >= 15:
+                    return "late"
+                return "noise"
             return "unknown"
 
         if pressure_score >= 0.75:
@@ -210,8 +274,9 @@ def velocity_percentile_from_evidence(evidence: Optional[Dict[str, Any]]) -> Opt
 def trend_signals_from_evidence(evidence: Dict[str, Any]) -> Dict[str, Any]:
     """Backward-compatible trend_signals slice for nurture/beta scorers."""
     youtube = (evidence.get("raw") or {}).get("youtube") or {}
+    trends = (evidence.get("raw") or {}).get("google_trends") or {}
     return {
-        "source_title": youtube.get("source_title"),
+        "source_title": youtube.get("source_title") or trends.get("keyword"),
         "video_id": youtube.get("source_video_id"),
         "channel_id": youtube.get("channel_id"),
         "detected_at": (evidence.get("provenance") or {}).get("detected_at"),

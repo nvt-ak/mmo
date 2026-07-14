@@ -26,6 +26,15 @@ def discovery_validation_enabled() -> bool:
     return raw not in ("0", "false", "no", "off")
 
 
+def enrichment_max_queries() -> int:
+    """Cap YouTube search queries per keyword during top-N enrichment (ADR 0014)."""
+    raw = os.getenv("ENRICHMENT_MAX_QUERIES", "4").strip()
+    try:
+        return max(1, min(int(raw), 4))
+    except ValueError:
+        return 4
+
+
 def _parse_published_at(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -70,8 +79,14 @@ def _title_proper_noun_phrases(source_title: str) -> List[str]:
     return phrases[:3]
 
 
-def build_search_queries(keyword: str, source_title: str = "") -> List[str]:
+def build_search_queries(
+    keyword: str,
+    source_title: str = "",
+    *,
+    max_queries: Optional[int] = None,
+) -> List[str]:
     """Literal + de-generic + source-title entity phrases (ADR 0014)."""
+    query_cap = max_queries if max_queries is not None else enrichment_max_queries()
     seen: set[str] = set()
     queries: List[str] = []
 
@@ -98,7 +113,7 @@ def build_search_queries(keyword: str, source_title: str = "") -> List[str]:
             if len(tokens) >= 1:
                 _add(f"{lowered} {' '.join(tokens[-2:])}")
 
-    return queries[:4]
+    return queries[:query_cap]
 
 
 def dedupe_videos(

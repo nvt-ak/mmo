@@ -18,6 +18,7 @@ def build_platform_signals(
     risk_flags: Optional[list] = None,
     blend: Optional[Dict[str, Any]] = None,
     lifecycle_stage: Optional[str] = None,
+    ranking_adjustments: Optional[Dict[str, Any]] = None,
     validation: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     trend_signals = dict(candidate.get("trend_signals") or {})
@@ -65,6 +66,8 @@ def build_platform_signals(
         agent_block["blend"] = blend
     if lifecycle_stage:
         agent_block["lifecycle_stage"] = lifecycle_stage
+    if ranking_adjustments:
+        agent_block["ranking_adjustments"] = ranking_adjustments
     if validation:
         agent_block["validation"] = validation
 

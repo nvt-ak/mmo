@@ -7,6 +7,7 @@ COMPONENT_MAX = 0.98
 SATURATION_CAP = 0.3
 SPECIFICITY_MAX_DEVIATION = 0.18
 SATURATION_MAX_DEVIATION = 0.15
+RELEVANCE_MAX_DEVIATION = 0.25
 
 
 def _clip(score: float) -> float:
@@ -61,3 +62,22 @@ def validate_llm_components(
         adjusted["specificity"] = True
 
     return validated, adjusted
+
+
+def reconcile_heuristic_components_for_blend(
+    llm_components: Dict[str, float],
+    heuristic_components: Dict[str, float],
+) -> Dict[str, float]:
+    """Soften over-optimistic heuristic components before beta/nurture blend."""
+    reconciled = dict(heuristic_components)
+    thresholds = {
+        "relevance": RELEVANCE_MAX_DEVIATION,
+        "specificity": SPECIFICITY_MAX_DEVIATION,
+        "saturation": SATURATION_MAX_DEVIATION,
+    }
+    for key, max_dev in thresholds.items():
+        llm = float(llm_components.get(key, 0.0))
+        heur = float(heuristic_components.get(key, 0.0))
+        if abs(llm - heur) > max_dev:
+            reconciled[key] = _clip(0.35 * heur + 0.65 * llm)
+    return reconciled

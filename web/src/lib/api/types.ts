@@ -8,6 +8,29 @@ export interface ComponentScores {
   video_performance: number;
 }
 
+export interface ScoreBlendMeta {
+  llm_weight: number;
+  heuristic_weight: number;
+  llm_final: number;
+  heuristic_final: number;
+  linked_beta_reports?: number;
+  heuristic_components?: ComponentScores;
+  heuristic_components_raw?: ComponentScores;
+  validation_adjusted?: Record<string, boolean>;
+  spread_enforced?: boolean;
+  pre_stretch_final?: number;
+  spread_std_before?: number;
+}
+
+export interface RankingAdjustments {
+  pre_ranking_score: number;
+  lifecycle_stage: string;
+  lifecycle_delta: number;
+  history_delta: number;
+  supply_pressure_delta: number;
+  post_ranking_score: number;
+}
+
 export interface PlatformAgentSignals {
   scored_with?: string;
   rationale?: string;
@@ -15,6 +38,9 @@ export interface PlatformAgentSignals {
   risk_flags?: string[];
   component_scores?: ComponentScores;
   component_reasons?: Record<string, string>;
+  blend?: ScoreBlendMeta;
+  lifecycle_stage?: string;
+  ranking_adjustments?: RankingAdjustments;
 }
 
 export interface PlatformSignals {
@@ -52,6 +78,11 @@ export interface Suggestion {
   final_score: number;
   component_scores: ComponentScores;
   platform_signals?: PlatformSignals;
+  trend_signals?: {
+    scoring?: {
+      blend?: ScoreBlendMeta;
+    };
+  };
   suggested_by: Array<{
     source: string;
     video_id?: string;

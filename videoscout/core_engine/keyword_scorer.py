@@ -25,11 +25,11 @@ from videoscout.core_engine.scoring_reroute import (
 )
 from videoscout.core_engine.scoring_validation import (
     calibration_blend_weights,
+    reconcile_heuristic_components_for_blend,
     validate_llm_components,
 )
 from videoscout.core_engine.scoring_rubric import (
     enforce_batch_relevance_tiebreak,
-    enforce_batch_spread,
     resolve_scoring_rubric,
 )
 from videoscout.core_engine.llm_config import create_llm_client, get_llm_config
@@ -267,26 +267,25 @@ def _finalize_beta_score(
     discovery_source = candidate.get("discovery_source", "youtube_trend")
     tiktok_stats = tiktok_gate.get("tiktok_stats") or {}
     saturation_tier = tiktok_stats.get("saturation_tier", "moderate")
-    heuristic_components = _heuristic_components(
+    heuristic_components_raw = _heuristic_components(
         keyword,
         tiktok_gate,
         candidate=candidate,
-    )
-    heuristic_final = heuristic_final_score(
-        keyword,
-        tiktok_gate,
-        candidate=candidate,
-        weights=weights,
     )
 
     llm_components = clamp_components(llm_payload.get("component_scores") or {})
     llm_components, validation_adjusted = validate_llm_components(
         llm_components,
-        heuristic_components,
+        heuristic_components_raw,
         saturation_tier=saturation_tier,
     )
     llm_components = _apply_saturation_cap(llm_components, saturation_tier)
     llm_final = weighted_final_score(llm_components, weights)
+    heuristic_components = reconcile_heuristic_components_for_blend(
+        llm_components,
+        heuristic_components_raw,
+    )
+    heuristic_final = weighted_final_score(heuristic_components, weights)
 
     if linked_reports < CALIBRATION_REPORT_THRESHOLD:
         blend_llm_weight, blend_heuristic_weight = calibration_blend_weights(
@@ -305,6 +304,7 @@ def _finalize_beta_score(
             "heuristic_final": heuristic_final,
             "linked_beta_reports": linked_reports,
             "heuristic_components": heuristic_components,
+            "heuristic_components_raw": heuristic_components_raw,
             "validation_adjusted": validation_adjusted,
         }
     else:
@@ -368,6 +368,7 @@ def _finalize_beta_score(
             rationale=rationale,
             confidence=float(llm_payload.get("confidence") or 0.0),
             risk_flags=list(llm_payload.get("risk_flags") or []),
+            blend=blend_meta,
         ),
         "tiktok_status": tier_to_status.get(saturation_tier, "moderate"),
         "tiktok_count": tiktok_stats.get("video_count_7d", 0),
@@ -449,7 +450,8 @@ def _finalize_batch_scores(
         )
     results, reroutes = split_finalize_results(finalized_rows)
     results = enforce_batch_relevance_tiebreak(results)
-    results = enforce_batch_spread(results)
+    # Beta uses calibrated absolute scores; nurture batch spread (0.45–0.92 ladder) is
+    # only for flat nurture clusters and must not replace blended beta finals.
     return results, reroutes
 
 
