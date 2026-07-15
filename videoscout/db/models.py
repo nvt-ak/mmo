@@ -347,6 +347,15 @@ class KeywordExperimentModel(Base):
     suggestion_source = Column(String(50), nullable=False)
     agent_suggested_score = Column(Integer, nullable=True)
 
+    # US-082: prediction-time link + immutable risk/validation snapshot
+    suggestion_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("suggestions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    prediction_signals = Column(JSONB, nullable=True)
+
     predicted_score = Column(Integer, nullable=False, default=0)
     prediction_reasoning = Column(Text, nullable=True)
     predicted_at = Column(DateTime, nullable=False, default=datetime.utcnow)

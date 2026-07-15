@@ -156,6 +156,7 @@ class ExperimentCreate(BaseModel):
     agent_suggested_score: Optional[int] = Field(None, ge=0, le=100)
     predicted_score: int = Field(0, ge=0, le=100)
     prediction_reasoning: Optional[str] = None
+    suggestion_id: Optional[str] = None
 
 
 class ExperimentReportRequest(BaseModel):
@@ -181,6 +182,8 @@ class Experiment(BaseModel):
     agent_suggested_score: Optional[int] = None
     predicted_score: int
     prediction_reasoning: Optional[str] = None
+    suggestion_id: Optional[str] = None
+    prediction_signals: Optional[Dict[str, Any]] = None
     actual_views: Optional[int] = None
     actual_engagement: Optional[float] = None
     actual_retention: Optional[float] = None

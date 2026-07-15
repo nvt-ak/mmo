@@ -1,13 +1,14 @@
 """Experiments API endpoints."""
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, Optional
+import copy
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from videoscout.db import get_db
-from videoscout.db.models import KeywordExperimentModel
+from videoscout.db.models import KeywordExperimentModel, SuggestionModel
 from videoscout.schemas import (
     ExperimentCreate,
     ExperimentReportRequest,
@@ -25,6 +26,17 @@ from videoscout.core_engine.experiments import (
 router = APIRouter()
 
 
+def build_prediction_signals(suggestion: SuggestionModel) -> Dict[str, Any]:
+    """Freeze prediction-time risk/validation from suggestion.platform_signals.agent."""
+    agent = ((suggestion.platform_signals or {}).get("agent") or {})
+    risk_flags = list(agent.get("risk_flags") or [])
+    validation = agent.get("validation")
+    return {
+        "risk_flags": risk_flags,
+        "validation": copy.deepcopy(validation) if validation is not None else None,
+    }
+
+
 def _to_experiment_schema(item: KeywordExperimentModel) -> Experiment:
     return Experiment(
         id=str(item.id),
@@ -37,6 +49,8 @@ def _to_experiment_schema(item: KeywordExperimentModel) -> Experiment:
         agent_suggested_score=item.agent_suggested_score,
         predicted_score=item.predicted_score,
         prediction_reasoning=item.prediction_reasoning,
+        suggestion_id=str(item.suggestion_id) if item.suggestion_id else None,
+        prediction_signals=item.prediction_signals,
         actual_views=item.actual_views,
         actual_engagement=item.actual_engagement,
         actual_retention=item.actual_retention,
@@ -52,6 +66,22 @@ def _to_experiment_schema(item: KeywordExperimentModel) -> Experiment:
 
 @router.post("/experiments", response_model=Experiment, status_code=201)
 async def create_experiment(payload: ExperimentCreate, db: Session = Depends(get_db)):
+    suggestion_uuid = None
+    prediction_signals = None
+    if payload.suggestion_id:
+        try:
+            suggestion_uuid = uuid.UUID(payload.suggestion_id)
+        except ValueError as exc:
+            raise HTTPException(400, "Invalid suggestion_id") from exc
+        suggestion = (
+            db.query(SuggestionModel)
+            .filter(SuggestionModel.id == suggestion_uuid)
+            .first()
+        )
+        if suggestion is None:
+            raise HTTPException(400, "suggestion_id not found")
+        prediction_signals = build_prediction_signals(suggestion)
+
     experiment = KeywordExperimentModel(
         keyword=payload.keyword,
         channel_id=payload.channel_id,
@@ -61,6 +91,8 @@ async def create_experiment(payload: ExperimentCreate, db: Session = Depends(get
         agent_suggested_score=payload.agent_suggested_score,
         predicted_score=payload.predicted_score,
         prediction_reasoning=payload.prediction_reasoning,
+        suggestion_id=suggestion_uuid,
+        prediction_signals=prediction_signals,
         test_status="in_progress",
     )
     db.add(experiment)

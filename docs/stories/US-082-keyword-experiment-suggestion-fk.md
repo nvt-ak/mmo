@@ -2,7 +2,7 @@
 
 ## Status
 
-planned
+implemented
 
 ## Lane
 
@@ -10,7 +10,7 @@ normal
 
 ## Product Contract
 
-`keyword_experiments` must support durable, **prediction-time** linkage to the
+`keyword_experiments` supports durable, **prediction-time** linkage to the
 inbox suggestion that motivated a test:
 
 1. Optional FK `suggestion_id` → `suggestions.id`.
@@ -19,7 +19,9 @@ inbox suggestion that motivated a test:
    therefore not stable between create and outcome report.
 
 Design:
-`docs/superpowers/specs/2026-07-15-keyword-experiment-suggestion-fk-design.md`
+`docs/superpowers/specs/2026-07-15-keyword-experiment-suggestion-fk-design.md`  
+Plan:
+`docs/superpowers/plans/2026-07-15-keyword-experiment-suggestion-fk.md`
 
 Standalone rationale: general learning/infra traceability — **not** justified
 solely by US-081 (that gate already works via `performance_reports` ⨝
@@ -47,25 +49,23 @@ solely by US-081 (that gate already works via `performance_reports` ⨝
 
 ### Schema
 
-- [ ] Alembic `0020`: add `suggestion_id` (FK `suggestions.id`, `ON DELETE SET NULL`,
+- [x] Alembic `0020`: add `suggestion_id` (FK `suggestions.id`, `ON DELETE SET NULL`,
       nullable) + `prediction_signals` (JSONB, nullable); index on `suggestion_id`
-- [ ] SQLAlchemy `KeywordExperimentModel` updated to match
-- [ ] Desktop/legacy sqlite helpers updated only if they still define the same
-      table in-repo and are required for tests (prefer not expanding scope)
+- [x] SQLAlchemy `KeywordExperimentModel` updated to match
 
 ### API
 
-- [ ] `ExperimentCreate` / `Experiment` schemas include optional
+- [x] `ExperimentCreate` / `Experiment` schemas include optional
       `suggestion_id`, `prediction_signals`
-- [ ] `POST /experiments` with valid `suggestion_id` populates both columns from
+- [x] `POST /experiments` with valid `suggestion_id` populates both columns from
       `platform_signals.agent`
-- [ ] Unknown `suggestion_id` → 400
-- [ ] Omit `suggestion_id` → both columns null (manual path)
+- [x] Unknown `suggestion_id` → 400
+- [x] Omit `suggestion_id` → both columns null (manual path)
 
 ### Tests
 
-- [ ] Unit/API coverage for the three create paths above
-- [ ] Existing experiment report/list tests still pass
+- [x] Unit/API coverage for the three create paths above
+- [x] Existing experiment report/list tests still pass
 
 ## Non-goals
 
@@ -82,18 +82,9 @@ solely by US-081 (that gate already works via `performance_reports` ⨝
 PYTHONPATH=. pytest videoscout/tests_api/test_experiments_api.py -v
 ```
 
-## Harness Delta
-
-```bash
-scripts/bin/harness-cli intake --type spec-slice \
-  --summary "Experiment suggestion_id FK + prediction_signals snapshot" \
-  --lane normal --story US-082
-
-scripts/bin/harness-cli story update --id US-082 \
-  --verify "PYTHONPATH=. pytest videoscout/tests_api/test_experiments_api.py -v"
-```
+Evidence (2026-07-15): **6 passed**.
 
 ## Related
 
-- Spec above
+- Spec / plan above
 - US-080 / US-081 (consumers of risk/validation concepts; independent)

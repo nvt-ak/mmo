@@ -70,7 +70,7 @@ Active stories for VideoScout. Create story packets before implementation
 | US-079 | Discovery region allowlist (Creator Rewards markets) | E09 | normal | implemented |
 | US-080 | Sample-shape saturation undo (validation audit) | E09 | normal | implemented |
 | US-081 | Viral-outlier weakened / haircut policy (ranking) | E09 | normal | deferred (evidence gate) |
-| US-082 | Keyword experiment ↔ suggestion FK (traceability) | E09 | normal | planned |
+| US-082 | Keyword experiment ↔ suggestion FK (traceability) | E09 | normal | implemented |
 
 ## Roadmap Phases
 

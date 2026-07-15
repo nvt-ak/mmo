@@ -1,4 +1,5 @@
 """Tests for experiments API endpoints."""
+import uuid
 
 
 def test_create_experiment(client):
@@ -19,6 +20,67 @@ def test_create_experiment(client):
     assert data["test_status"] == "in_progress"
     assert data["agent_suggested_score"] == 78
     assert data["views_vs_baseline"] is None
+    assert data["suggestion_id"] is None
+    assert data["prediction_signals"] is None
+
+
+def test_create_experiment_with_suggestion_snapshots_prediction_signals(
+    client, db_session, sample_suggestion
+):
+    sample_suggestion.platform_signals = {
+        "agent": {
+            "risk_flags": ["single_viral_source", "search_sample_bias"],
+            "validation": {
+                "validation_status": "weakened",
+                "pattern_assessment": "mixed",
+                "adjustments": {
+                    "generalizability": 0.0,
+                    "video_performance": -0.12,
+                    "confidence": -0.12,
+                    "saturation": 0.05,
+                },
+                "risk_flags": ["single_viral_source"],
+                "validation_rationale": "Sample-shape saturation undo (+0.05) applied (n=5).",
+            },
+            "confidence": 0.6,
+            "component_reasons": {"relevance": "should not be snapshotted"},
+        }
+    }
+    db_session.commit()
+
+    resp = client.post(
+        "/api/v1/experiments",
+        json={
+            "keyword": sample_suggestion.keyword,
+            "suggestion_source": "agent_suggested",
+            "agent_suggested_score": 80,
+            "predicted_score": 80,
+            "suggestion_id": str(sample_suggestion.id),
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["suggestion_id"] == str(sample_suggestion.id)
+    assert data["prediction_signals"]["risk_flags"] == [
+        "single_viral_source",
+        "search_sample_bias",
+    ]
+    assert data["prediction_signals"]["validation"]["validation_status"] == "weakened"
+    assert data["prediction_signals"]["validation"]["adjustments"]["saturation"] == 0.05
+    assert "component_reasons" not in data["prediction_signals"]
+
+
+def test_create_experiment_unknown_suggestion_id_returns_400(client):
+    resp = client.post(
+        "/api/v1/experiments",
+        json={
+            "keyword": "orphan experiment keyword",
+            "suggestion_source": "agent_suggested",
+            "suggestion_id": str(uuid.uuid4()),
+        },
+    )
+    assert resp.status_code == 400
+    assert "not found" in resp.json()["error"]["message"].lower()
 
 
 def test_list_experiments(client):
