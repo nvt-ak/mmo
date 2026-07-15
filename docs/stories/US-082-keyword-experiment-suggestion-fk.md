@@ -10,50 +10,90 @@ normal
 
 ## Product Contract
 
-`keyword_experiments` does not store `suggestion_id` and does not snapshot
-`risk_flags` / validation from discovery. Creating an experiment from a suggestion
-only copies prediction fields (`ExperimentCreate`). Joining outcomes back to
-discovery risk signals therefore requires fragile keyword-string matching.
+`keyword_experiments` must support durable, **prediction-time** linkage to the
+inbox suggestion that motivated a test:
 
-This breaks durable analytics for **any** post-hoc learning (not only viral-outlier
-policy). Operators who report via `performance_reports` with `suggestion_id` retain
-the join; experiment path does not.
+1. Optional FK `suggestion_id` → `suggestions.id`.
+2. Required snapshot `prediction_signals` at create time — because live
+   `suggestions.platform_signals` is overwritten on rediscovery upsert and is
+   therefore not stable between create and outcome report.
 
-## Goal
+Design:
+`docs/superpowers/specs/2026-07-15-keyword-experiment-suggestion-fk-design.md`
 
-Add durable link from experiment → suggestion so later analysis can always join
-prediction-time `platform_signals` (risk flags, validation adjustments, status)
-without string matching.
+Standalone rationale: general learning/infra traceability — **not** justified
+solely by US-081 (that gate already works via `performance_reports` ⨝
+`suggestions`).
 
-## Scope (proposed)
+## Intake
 
-- [ ] Alembic: `keyword_experiments.suggestion_id` UUID FK → `suggestions.id`
-      (`ON DELETE SET NULL`), nullable for manual experiments
-- [ ] `ExperimentCreate` / API: accept optional `suggestion_id`; validate exists
-- [ ] Web create-from-suggestion flow passes suggestion id when present
-- [ ] Tests: create with FK; create without FK (manual) still works
-- [ ] Optional (same story or follow-up): snapshot `risk_flags` JSON at create time
-      if denormalized query without join is desired
+| Field | Value |
+| --- | --- |
+| Type | spec-slice |
+| Lane | normal |
+| Risk | Bounded migration + create API; no ranking change |
+
+## Locked decisions
+
+| Topic | Decision |
+| --- | --- |
+| Scope | Schema + API only (no web UI, no backfill) |
+| Snapshot | Merged `agent.risk_flags` + whole `agent.validation` dict |
+| Columns | `suggestion_id` UUID FK nullable + `prediction_signals` JSONB nullable |
+| Create logic | Valid id → fill FK+snapshot; bad id → 400; no id → both null |
+| Migration | `0020_keyword_experiment_suggestion_fk.py`, `down_revision="0019"` |
+
+## Acceptance Criteria
+
+### Schema
+
+- [ ] Alembic `0020`: add `suggestion_id` (FK `suggestions.id`, `ON DELETE SET NULL`,
+      nullable) + `prediction_signals` (JSONB, nullable); index on `suggestion_id`
+- [ ] SQLAlchemy `KeywordExperimentModel` updated to match
+- [ ] Desktop/legacy sqlite helpers updated only if they still define the same
+      table in-repo and are required for tests (prefer not expanding scope)
+
+### API
+
+- [ ] `ExperimentCreate` / `Experiment` schemas include optional
+      `suggestion_id`, `prediction_signals`
+- [ ] `POST /experiments` with valid `suggestion_id` populates both columns from
+      `platform_signals.agent`
+- [ ] Unknown `suggestion_id` → 400
+- [ ] Omit `suggestion_id` → both columns null (manual path)
+
+### Tests
+
+- [ ] Unit/API coverage for the three create paths above
+- [ ] Existing experiment report/list tests still pass
 
 ## Non-goals
 
-- Ranking / haircut / validation policy (US-081 deferred)
-- Backfilling historical experiments unless easy and optional in the same PR
-- Changing `performance_reports` (already has `suggestion_id`)
+- Ranking / haircut / validation policy (US-081)
+- Web create-from-suggestion UI
+- Historical keyword-match backfill
+- Changing `_upsert_scored_suggestion` overwrite behavior
+- Full `platform_signals.agent` / blend snapshot
+- Mandatory GIN indexes
 
-## Rationale (standalone)
-
-Traceability suggestion→experiment is a general learning-infra gap. It is **not**
-justified solely because US-081 needs viral evidence — that gate already works via
-`performance_reports` ⨝ `suggestions`.
-
-## Validation (planned)
+## Validation
 
 ```bash
 PYTHONPATH=. pytest videoscout/tests_api/test_experiments_api.py -v
 ```
 
+## Harness Delta
+
+```bash
+scripts/bin/harness-cli intake --type spec-slice \
+  --summary "Experiment suggestion_id FK + prediction_signals snapshot" \
+  --lane normal --story US-082
+
+scripts/bin/harness-cli story update --id US-082 \
+  --verify "PYTHONPATH=. pytest videoscout/tests_api/test_experiments_api.py -v"
+```
+
 ## Related
 
-- US-081 deferred evidence gate (reports ⨝ suggestions)
-- US-001 / experiments API
+- Spec above
+- US-080 / US-081 (consumers of risk/validation concepts; independent)
