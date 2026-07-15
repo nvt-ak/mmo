@@ -63,6 +63,18 @@ def _heuristic_validation(scored: Dict[str, Any]) -> Dict[str, Any]:
         adjustments["confidence"] = -0.12
         pattern = "mixed" if pattern == "single_pattern" else pattern
 
+    # US-080: audit/display undo only — does not recompute final_score / haircut.
+    sat_undo = False
+    undo_n = 0
+    if yt.get("viral_outlier") and int(yt.get("sample_size") or 0) >= 5:
+        sat_undo = True
+        undo_n = int(yt.get("sample_size") or 0)
+    elif tt.get("viral_outlier") and int(tt.get("sample_size") or 0) >= 5:
+        sat_undo = True
+        undo_n = int(tt.get("sample_size") or 0)
+    if sat_undo:
+        adjustments["saturation"] = 0.05
+
     if rep_conf == "low":
         risk_flags.append("low_representation_quality")
         risk_flags.append("pattern_fragmented")
@@ -93,6 +105,10 @@ def _heuristic_validation(scored: Dict[str, Any]) -> Dict[str, Any]:
     if yt.get("sample_size"):
         rationale_parts.append(
             f"YouTube median views {yt.get('median_views', 0):,.0f} (n={yt.get('sample_size')})."
+        )
+    if sat_undo:
+        rationale_parts.append(
+            f"Sample-shape saturation undo (+0.05) applied (n={undo_n})."
         )
 
     return {

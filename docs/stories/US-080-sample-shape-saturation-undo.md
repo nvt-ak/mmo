@@ -2,7 +2,7 @@
 
 ## Status
 
-planned
+implemented
 
 ## Lane
 
@@ -33,6 +33,7 @@ Relevant: `docs/product/workflows.md` (discovery → enrich → validate → inb
 ## Relevant Product Docs
 
 - Design: `docs/superpowers/specs/2026-07-15-sample-shape-saturation-undo-design.md`
+- Plan: `docs/superpowers/plans/2026-07-15-sample-shape-saturation-undo.md`
 - US-065, US-077
 - ADR 0014
 
@@ -48,31 +49,33 @@ Relevant: `docs/product/workflows.md` (discovery → enrich → validate → inb
 
 ### Behavior
 
-- [ ] When `tt.viral_outlier` and `tt.sample_size >= 5` **or** `yt.viral_outlier` and
+- [x] When `tt.viral_outlier` and `tt.sample_size >= 5` **or** `yt.viral_outlier` and
       `yt.sample_size >= 5`, `_heuristic_validation` sets
       `adjustments["saturation"] = 0.05`.
-- [ ] `sample_size` always read from `derived.search_sample` platform dict — never from
+- [x] `sample_size` always read from `derived.search_sample` platform dict — never from
       `tiktok_stats.video_count_7d`.
-- [ ] Outlier with `sample_size < 5` → saturation adjustment remains `0.0`.
-- [ ] Existing outlier VP −0.12 and confidence −0.12 unchanged.
-- [ ] Status / haircut rules unchanged (no soften, no remove `elif yt viral_outlier`).
-- [ ] Rationale mentions saturation undo when applied.
+- [x] Outlier with `sample_size < 5` → saturation adjustment remains `0.0`.
+- [x] Existing outlier VP −0.12 and confidence −0.12 unchanged.
+- [x] Status / haircut rules unchanged (no soften, no remove `elif yt viral_outlier`).
+- [x] Rationale mentions saturation undo when applied.
 
 ### Explicit non-goals
 
-- [ ] No change to `compute_saturation` / `calculate_saturation` / `tiktok_stats` shape.
-- [ ] No recompute of `final_score` from adjusted components.
-- [ ] No haircut magnitude or weakened-policy change (→ US-081).
+- [x] No change to `compute_saturation` / `calculate_saturation` / `tiktok_stats` shape.
+- [x] No recompute of `final_score` from adjusted components.
+- [x] No haircut magnitude or weakened-policy change (→ US-081).
 
 ### Tests
 
-- [ ] Unit cases for n≥5 undo, n=4 no-undo, no-outlier; VP/confidence regression.
+- [x] Unit cases for n≥5 undo, n=4 no-undo, no-outlier; VP/confidence regression.
 
 ## Validation
 
 ```bash
 PYTHONPATH=. pytest videoscout/tests_api/test_validation_pass.py -v
 ```
+
+Evidence (2026-07-15): **10 passed**.
 
 ## Follow-ups (required elsewhere)
 

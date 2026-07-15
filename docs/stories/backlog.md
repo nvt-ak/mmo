@@ -68,7 +68,7 @@ Active stories for VideoScout. Create story packets before implementation
 | US-077 | Score breakdown transparency (blend + ranking) | E09 | normal | implemented |
 | US-078 | Google Trends YouTube discovery | E09 | normal | implemented |
 | US-079 | Discovery region allowlist (Creator Rewards markets) | E09 | normal | implemented |
-| US-080 | Sample-shape saturation undo (validation audit) | E09 | normal | planned |
+| US-080 | Sample-shape saturation undo (validation audit) | E09 | normal | implemented |
 | US-081 | Viral-outlier weakened / haircut policy (ranking) | E09 | normal | planned (placeholder) |
 
 ## Roadmap Phases
