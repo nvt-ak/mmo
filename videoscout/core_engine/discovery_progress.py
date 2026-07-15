@@ -32,14 +32,22 @@ class DiscoveryProgress(TypedDict):
     progress_label: str
 
 
+def _phase_base(phase: str) -> str:
+    """Strip optional `:REGION` suffix from progress phases (US-079)."""
+    if ":" in phase:
+        return phase.split(":", 1)[0]
+    return phase
+
+
 def _running_percent(
     phase: str,
     videos: int,
     candidates: int,
     keywords: int,
 ) -> int:
-    if phase in ("starting", "fetch_trends", "fetch_velocity") and videos == 0:
-        return 5 if phase in ("fetch_trends", "fetch_velocity") else 2
+    base = _phase_base(phase)
+    if base in ("starting", "fetch_trends", "fetch_velocity") and videos == 0:
+        return 5 if base in ("fetch_trends", "fetch_velocity") else 2
 
     video_cap = TRENDING_VIDEO_LIMIT + VELOCITY_VIDEO_LIMIT
     video_pct = 10 + int(30 * min(videos, video_cap) / video_cap)
@@ -48,7 +56,7 @@ def _running_percent(
     )
     keyword_pct = int(15 * min(keywords, MAX_KEYWORDS_PER_JOB) / MAX_KEYWORDS_PER_JOB)
 
-    if phase in ("score_beta", "score_nurture", "enrich_top", "validate", "rank_final"):
+    if base in ("score_beta", "score_nurture", "enrich_top", "validate", "rank_final"):
         return min(75 + int(20 * keywords / MAX_KEYWORDS_PER_JOB), 95)
 
     return min(max(video_pct + candidate_pct + keyword_pct, 5), 94)
@@ -60,19 +68,27 @@ def _running_label(
     candidates: int,
     keywords: int,
 ) -> str:
-    if phase == "fetch_trends":
+    base = _phase_base(phase)
+    region = phase.split(":", 1)[1] if ":" in phase else None
+    if base == "fetch_trends":
+        if region:
+            return f"Fetching YouTube trends ({region})…"
         return PHASE_LABELS["fetch_trends"]
-    if phase == "fetch_velocity":
+    if base == "fetch_velocity":
         return PHASE_LABELS["fetch_velocity"]
-    if phase == "rank_final":
+    if base == "scan_videos":
+        if region:
+            return f"Checking TikTok gates ({region})…"
+        return PHASE_LABELS["scan_videos"]
+    if base == "rank_final":
         return PHASE_LABELS["rank_final"]
-    if phase == "validate":
+    if base == "validate":
         return PHASE_LABELS["validate"]
-    if phase == "score_beta":
+    if base == "score_beta":
         return PHASE_LABELS["score_beta"]
-    if phase == "score_nurture":
+    if base == "score_nurture":
         return PHASE_LABELS["score_nurture"]
-    if phase == "enrich_top":
+    if base == "enrich_top":
         return PHASE_LABELS["enrich_top"]
     if keywords > 0:
         return f"Saving keywords ({keywords}/{MAX_KEYWORDS_PER_JOB})"
@@ -80,7 +96,7 @@ def _running_label(
         return PHASE_LABELS["scan_videos"]
     if videos > 0:
         return f"Scanning trends ({videos}/{TRENDING_VIDEO_LIMIT + VELOCITY_VIDEO_LIMIT})"
-    return PHASE_LABELS.get(phase, "Discovering…")
+    return PHASE_LABELS.get(base, "Discovering…")
 
 
 def compute_discovery_progress(job: DiscoveryJobModel) -> DiscoveryProgress:

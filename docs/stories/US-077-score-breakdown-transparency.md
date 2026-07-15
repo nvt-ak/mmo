@@ -14,6 +14,8 @@ also includes heuristic blend and ranking adjustments. Additionally:
   scores (e.g. 0.746 → 0.92 → 0.884)
 - Over-optimistic heuristic relevance (title token match) inflated blend when LLM
   scored much lower
+- Heuristic layer value was visible, but its 5-signal breakdown stayed opaque in UI
+  even after `heuristic_components` / `_raw` were persisted in `blend_meta`
 
 ## Fixes
 
@@ -21,12 +23,15 @@ also includes heuristic blend and ranking adjustments. Additionally:
 2. Skip `enforce_batch_spread` on beta batch finalize
 3. `reconcile_heuristic_components_for_blend` before heuristic blend weight
 4. Persist `ranking_adjustments`; UI shows full composition
+5. Insight panel shows heuristic 5-component breakdown (+ raw when reconcile changed a signal)
 
 ## Acceptance
 
 1. `apply_final_ranking()` persists `ranking_adjustments` on `platform_signals.agent`.
 2. Inbox insight panel shows blend weights + heuristic final + ranking deltas when present.
 3. Tests cover ranking metadata persistence.
+4. When `blend.heuristic_components` is present, insight panel lists the five heuristic
+   scores; when raw differs after reconcile, show raw beside the blended value.
 
 ## Verify
 

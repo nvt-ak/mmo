@@ -240,6 +240,8 @@ class SettingsModel(Base):
     min_specificity = Column(Float, default=0.4)
     min_saturation = Column(Float, default=0.3)
     max_suggestions_per_video = Column(Integer, default=20)
+    # Creator Rewards discovery markets (US-079); default US
+    discovery_region_codes = Column(JSONB, nullable=False, default=lambda: ["US"])
     
     # Niche definition
     niche_topics = Column(JSONB, default=[])  # ["topic1", "topic2", ...]

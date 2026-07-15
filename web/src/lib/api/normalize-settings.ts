@@ -37,9 +37,13 @@ export function normalizeSettingsResponse(raw: SettingsResponse): SettingsRespon
   const rubricsAvailable = Boolean(
     raw.scoring_rubrics?.nurture?.default_text && raw.scoring_rubrics?.beta?.default_text,
   );
+  const regions = Array.isArray(raw.discovery_region_codes)
+    ? raw.discovery_region_codes
+    : ["US"];
 
   return {
     ...raw,
+    discovery_region_codes: regions.length > 0 ? regions : ["US"],
     rubrics_available: rubricsAvailable,
     scoring_rubrics: { nurture, beta },
   };

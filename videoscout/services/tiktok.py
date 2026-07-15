@@ -7,10 +7,14 @@ Requires ms_token from tiktok.com cookies (cookie name: msToken).
 
 Configure tokens via TIKTOK_MS_TOKEN, TIKTOK_MS_TOKENS, TIKTOK_MS_TOKEN_FILE,
 or videoscout/tiktok_ms_token.txt (one token per line).
+
+Optional full profile: TIKTOK_COOKIES_FILE (Cookie-Editor / Playwright JSON) —
+passed to TikTokApi create_sessions(cookies=[name→value dict, ...]).
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import random
@@ -37,6 +41,7 @@ WEB_SEARCH_CODE = (
 TIKTOK_SEARCH_TIMEOUT_SECONDS = float(os.getenv("TIKTOK_SEARCH_TIMEOUT_SECONDS", "30"))
 ERROR_CACHE_TTL_SECONDS = 300
 DEFAULT_MS_TOKEN_FILE = Path(__file__).parent.parent / "tiktok_ms_token.txt"
+DEFAULT_COOKIES_FILE = Path(__file__).parent.parent / "tiktok_cookies.json"
 
 _tiktok_cache: Dict[str, Dict] = {}
 _error_cache: Dict[str, Dict] = {}
@@ -134,7 +139,7 @@ def _dedupe(values: List[str]) -> List[str]:
 
 
 def get_ms_tokens() -> List[str]:
-    """Load msToken values from env and optional files."""
+    """Load msToken values from env, optional files, and cookie profiles."""
     tokens: List[str] = []
 
     tokens.extend(_split_env_list(os.getenv("TIKTOK_MS_TOKENS", "")))
@@ -148,7 +153,129 @@ def get_ms_tokens() -> List[str]:
         tokens.insert(0, single)
 
     tokens.extend(_load_lines(DEFAULT_MS_TOKEN_FILE))
+    tokens.extend(extract_ms_tokens_from_profiles(get_tiktok_cookie_profiles()))
     return _dedupe(tokens)
+
+
+def _cookie_name_value(entry: Any) -> Optional[tuple[str, str]]:
+    if not isinstance(entry, dict):
+        return None
+    name = entry.get("name")
+    value = entry.get("value")
+    if name is None or value is None:
+        return None
+    name_s = str(name).strip()
+    value_s = str(value)
+    if not name_s:
+        return None
+    return name_s, value_s
+
+
+def _cookie_entries_to_profile(entries: List[Any]) -> Dict[str, str]:
+    """
+    Build TikTokApi cookie dict (name → value).
+
+    Duplicate names (e.g. two msToken rows): keep the longest value.
+    """
+    profile: Dict[str, str] = {}
+    for entry in entries:
+        pair = _cookie_name_value(entry)
+        if not pair:
+            continue
+        name, value = pair
+        existing = profile.get(name)
+        if existing is None or len(value) > len(existing):
+            profile[name] = value
+    return profile
+
+
+def parse_tiktok_cookies_payload(payload: Any) -> List[Dict[str, str]]:
+    """
+    Normalize exported cookie JSON into TikTokApi profiles.
+
+    Supported shapes:
+    - Cookie-Editor / EditThisCookie: [ {name, value, domain, ...}, ... ]
+    - Playwright storage state: { "cookies": [ ... ] }
+    - Already a name→value map: { "msToken": "...", "sessionid": "..." }
+    - List of profiles: [ {name→value}, {name→value}, ... ]
+    """
+    if payload is None:
+        return []
+
+    if isinstance(payload, dict):
+        if "cookies" in payload and isinstance(payload["cookies"], list):
+            profile = _cookie_entries_to_profile(payload["cookies"])
+            return [profile] if profile else []
+        # name→value map (no nested cookie list)
+        if all(isinstance(v, (str, int, float, type(None))) for v in payload.values()):
+            profile = {
+                str(k): str(v)
+                for k, v in payload.items()
+                if v is not None and str(k).strip()
+            }
+            return [profile] if profile else []
+        return []
+
+    if not isinstance(payload, list) or not payload:
+        return []
+
+    # List of cookie objects (Cookie-Editor)
+    if all(isinstance(item, dict) and "name" in item for item in payload):
+        profile = _cookie_entries_to_profile(payload)
+        return [profile] if profile else []
+
+    # List of name→value profiles
+    profiles: List[Dict[str, str]] = []
+    for item in payload:
+        if isinstance(item, dict) and "name" not in item:
+            profile = {
+                str(k): str(v)
+                for k, v in item.items()
+                if v is not None and str(k).strip()
+            }
+            if profile:
+                profiles.append(profile)
+        elif isinstance(item, list):
+            profile = _cookie_entries_to_profile(item)
+            if profile:
+                profiles.append(profile)
+    return profiles
+
+
+def load_tiktok_cookies_file(path: Path) -> List[Dict[str, str]]:
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to load TikTok cookies from %s: %s", path, exc)
+        return []
+    profiles = parse_tiktok_cookies_payload(payload)
+    if profiles:
+        logger.info(
+            "Loaded %d TikTok cookie profile(s) from %s (%d cookies in first)",
+            len(profiles),
+            path,
+            len(profiles[0]),
+        )
+    return profiles
+
+
+def get_tiktok_cookie_profiles() -> List[Dict[str, str]]:
+    """Load cookie profiles for create_sessions(cookies=...)."""
+    env_path = os.getenv("TIKTOK_COOKIES_FILE", "").strip()
+    if env_path:
+        return load_tiktok_cookies_file(Path(env_path).expanduser())
+    return load_tiktok_cookies_file(DEFAULT_COOKIES_FILE)
+
+
+def extract_ms_tokens_from_profiles(profiles: List[Dict[str, str]]) -> List[str]:
+    tokens: List[str] = []
+    for profile in profiles:
+        value = (profile.get("msToken") or profile.get("mstoken") or "").strip()
+        if value:
+            tokens.append(value)
+    return tokens
 
 
 def _playwright_proxy(proxy_url: str) -> Dict[str, str]:
@@ -220,6 +347,7 @@ async def _create_api_sessions(
     *,
     ms_tokens: List[str],
     proxies: Optional[List[Dict[str, str]]] = None,
+    cookie_profiles: Optional[List[Dict[str, str]]] = None,
 ) -> None:
     kwargs: Dict[str, Any] = {
         "num_sessions": _session_count(ms_tokens),
@@ -231,6 +359,16 @@ async def _create_api_sessions(
     }
     if ms_tokens:
         kwargs["ms_tokens"] = ms_tokens
+
+    if cookie_profiles is None:
+        cookie_profiles = get_tiktok_cookie_profiles()
+    if cookie_profiles:
+        # TikTokApi expects list of name→value maps; random_choice picks one per session.
+        kwargs["cookies"] = cookie_profiles
+        kwargs["num_sessions"] = max(
+            1,
+            min(len(cookie_profiles), int(os.getenv("TIKTOK_NUM_SESSIONS", "3")) or 1),
+        )
 
     if proxies is None:
         proxies = get_proxies()

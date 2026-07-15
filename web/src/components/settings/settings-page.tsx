@@ -14,6 +14,17 @@ const WEIGHT_LABELS: Record<keyof ScoringWeights, string> = {
   video_performance: "Video performance",
 };
 
+const DISCOVERY_REGION_OPTIONS: { code: string; label: string }[] = [
+  { code: "US", label: "United States" },
+  { code: "DE", label: "Germany" },
+  { code: "GB", label: "United Kingdom" },
+  { code: "JP", label: "Japan" },
+  { code: "KR", label: "South Korea" },
+  { code: "ES", label: "Spain" },
+  { code: "FR", label: "France" },
+  { code: "MX", label: "Mexico" },
+];
+
 type SettingsData = Awaited<ReturnType<typeof api.getSettings>>;
 
 function RubricEditor({
@@ -87,6 +98,11 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
   const [llmBaseUrl, setLlmBaseUrl] = useState(initial.llm.base_url);
   const [llmModel, setLlmModel] = useState(initial.llm.model);
   const [llmApiKey, setLlmApiKey] = useState("");
+  const [discoveryRegions, setDiscoveryRegions] = useState<string[]>(
+    initial.discovery_region_codes?.length
+      ? initial.discovery_region_codes
+      : ["US"],
+  );
   const [saved, setSaved] = useState(false);
 
   const modelsQuery = useQuery({
@@ -129,6 +145,7 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
           nurture: nurtureRubric,
           beta: betaRubric,
         },
+        discovery_region_codes: discoveryRegions,
       }),
     onSuccess: () => {
       setSaved(true);
@@ -138,6 +155,19 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
   });
 
   const weightSum = Object.values(weights).reduce((a, b) => a + b, 0);
+
+  function toggleRegion(code: string) {
+    setDiscoveryRegions((prev) => {
+      if (prev.includes(code)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((c) => c !== code);
+      }
+      const order = DISCOVERY_REGION_OPTIONS.map((o) => o.code);
+      return [...prev, code].sort(
+        (a, b) => order.indexOf(a) - order.indexOf(b),
+      );
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -214,6 +244,44 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
             Beta keywords also require relevance ≥ 30%. Nurture uses a lower score floor.
           </p>
         </div>
+      </section>
+
+      <section className="panel-section p-6">
+        <h2 className="font-editorial text-xl text-(--foreground-strong)">
+          Discovery regions
+        </h2>
+        <p className="mt-1 text-sm text-(--muted)">
+          Creator Rewards markets used for every Discover run (nurture, beta, or
+          both). Default is United States.
+        </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {DISCOVERY_REGION_OPTIONS.map(({ code, label }) => {
+            const checked = discoveryRegions.includes(code);
+            return (
+              <label
+                key={code}
+                className="flex cursor-pointer items-center gap-3 text-sm text-foreground"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleRegion(code)}
+                  className="size-4 accent-(--foreground-strong)"
+                />
+                <span>
+                  <span className="font-mono text-xs text-(--muted)">{code}</span>
+                  {" · "}
+                  {label}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        {discoveryRegions.length === 0 && (
+          <p className="mt-3 text-xs text-(--pastel-amber-text)">
+            Select at least one market.
+          </p>
+        )}
       </section>
 
       <section className="panel-section p-6">
@@ -383,7 +451,7 @@ function SettingsForm({ initial }: { initial: SettingsData }) {
       <button
         type="button"
         onClick={() => saveMutation.mutate()}
-        disabled={saveMutation.isPending}
+        disabled={saveMutation.isPending || discoveryRegions.length === 0}
         className="btn btn-primary"
       >
         {saveMutation.isPending ? "Saving" : saved ? "Saved" : "Save settings"}

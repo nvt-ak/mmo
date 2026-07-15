@@ -1,0 +1,26 @@
+[
+  {
+    "name": "msToken",
+    "value": "REPLACE_WITH_REAL_msToken",
+    "domain": ".tiktok.com",
+    "path": "/",
+    "secure": true,
+    "httpOnly": false
+  },
+  {
+    "name": "sessionid",
+    "value": "REPLACE_WITH_REAL_sessionid",
+    "domain": ".tiktok.com",
+    "path": "/",
+    "secure": true,
+    "httpOnly": true
+  },
+  {
+    "name": "ttwid",
+    "value": "REPLACE_WITH_REAL_ttwid",
+    "domain": ".tiktok.com",
+    "path": "/",
+    "secure": true,
+    "httpOnly": true
+  }
+]

@@ -161,6 +161,8 @@ export interface SettingsResponse {
   llm: { model: string; temperature: number; base_url: string; api_key_set: boolean };
   tiktok: { api_key_set: boolean; check_enabled: boolean };
   scoring_rubrics: ScoringRubricsConfig;
+  /** Creator Rewards discovery markets (ISO-2 allowlist). Default US. */
+  discovery_region_codes: string[];
   /** False when API response omits rubrics (old server or pending restart). */
   rubrics_available?: boolean;
 }
@@ -180,6 +182,7 @@ export interface UpdateSettingsPayload {
     api_key?: string;
   };
   tiktok?: { check_enabled?: boolean };
+  discovery_region_codes?: string[];
   scoring_rubrics?: {
     nurture?: string | null;
     beta?: string | null;

@@ -10,6 +10,30 @@ def test_get_settings_defaults(client):
     assert data["filters"]["min_score_threshold"] == 0.55
     assert data["llm"]["model"] == "gpt-4o"
     assert data["tiktok"]["check_enabled"] is True
+    assert data["discovery_region_codes"] == ["US"]
+
+
+def test_update_discovery_region_codes(client):
+    resp = client.put(
+        "/api/v1/settings",
+        json={"discovery_region_codes": ["us", "DE", "jp"]},
+    )
+    assert resp.status_code == 200
+    data = client.get("/api/v1/settings").json()
+    assert data["discovery_region_codes"] == ["US", "DE", "JP"]
+
+
+def test_update_discovery_region_codes_rejects_empty(client):
+    resp = client.put("/api/v1/settings", json={"discovery_region_codes": []})
+    assert resp.status_code == 400
+
+
+def test_update_discovery_region_codes_rejects_unknown(client):
+    resp = client.put(
+        "/api/v1/settings",
+        json={"discovery_region_codes": ["US", "VN"]},
+    )
+    assert resp.status_code == 400
 
 
 def test_update_settings_weights(client, db_session):

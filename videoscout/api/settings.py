@@ -21,6 +21,10 @@ from videoscout.core_engine.scoring_rubric import (
     default_rubric_text,
     normalize_rubric_override,
 )
+from videoscout.core_engine.discovery_regions import (
+    DiscoveryRegionError,
+    normalize_discovery_region_codes,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,6 +39,13 @@ def _get_or_create_settings(db: Session) -> SettingsModel:
         db.commit()
         db.refresh(settings)
     return settings
+
+
+def _settings_region_codes(s: SettingsModel) -> list[str]:
+    try:
+        return normalize_discovery_region_codes(s.discovery_region_codes)
+    except DiscoveryRegionError:
+        return normalize_discovery_region_codes(None)
 
 
 @router.get("/settings", response_model=SettingsResponse)
@@ -76,6 +87,7 @@ async def get_settings(db: Session = Depends(get_db)):
             nurture=ScoringRubricField(**build_rubric_field("nurture", s)),
             beta=ScoringRubricField(**build_rubric_field("beta", s)),
         ),
+        discovery_region_codes=_settings_region_codes(s),
     )
 
 
@@ -161,6 +173,15 @@ async def update_settings(
                 rubrics.beta,
                 default_rubric_text("beta"),
             )
+
+    if payload.discovery_region_codes is not None:
+        try:
+            s.discovery_region_codes = normalize_discovery_region_codes(
+                payload.discovery_region_codes,
+                default=[],  # empty payload must error, not silently default
+            )
+        except DiscoveryRegionError as exc:
+            raise HTTPException(400, str(exc)) from exc
     
     s.updated_at = datetime.utcnow()
     db.commit()

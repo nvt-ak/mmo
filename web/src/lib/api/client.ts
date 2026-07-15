@@ -203,7 +203,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({
         keyword_type_filter: keywordTypeFilter,
-        region_code: "DE",
         force,
       }),
     }),

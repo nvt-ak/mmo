@@ -45,7 +45,7 @@ def _mock_discovery_sources(mock_trending):
 
 
 def test_discovery_run_creates_job(client, db_session):
-    with patch("videoscout.api.discovery.run_trend_discovery_sync"):
+    with patch("videoscout.api.discovery.run_trend_discovery_sync") as mock_sync:
         resp = client.post(
             "/api/v1/discovery/run",
             json={"keyword_type_filter": "both", "region_code": "DE"},
@@ -55,11 +55,37 @@ def test_discovery_run_creates_job(client, db_session):
     assert data["status"] == "started"
     assert data["job_id"]
     assert data["max_keywords"] == 10
+    mock_sync.assert_called_once()
+    assert mock_sync.call_args.kwargs["region_codes"] == ["DE"]
 
     job = db_session.query(DiscoveryJobModel).first()
     assert job is not None
     assert job.job_type == "trend_discovery"
     assert job.keyword_type_filter == "both"
+
+
+def test_discovery_run_uses_settings_regions(client, db_session):
+    client.put(
+        "/api/v1/settings",
+        json={"discovery_region_codes": ["JP", "KR"]},
+    )
+    with patch("videoscout.api.discovery.run_trend_discovery_sync") as mock_sync:
+        resp = client.post(
+            "/api/v1/discovery/run",
+            json={"keyword_type_filter": "both"},
+        )
+    assert resp.status_code == 200
+    assert mock_sync.call_args.kwargs["region_codes"] == ["JP", "KR"]
+    assert resp.json()["estimated_duration_seconds"] == 120
+
+
+def test_discovery_run_rejects_bad_region_override(client):
+    with patch("videoscout.api.discovery.run_trend_discovery_sync"):
+        resp = client.post(
+            "/api/v1/discovery/run",
+            json={"keyword_type_filter": "both", "region_codes": ["VN"]},
+        )
+    assert resp.status_code == 400
 
 
 def test_discovery_run_rejects_when_job_active(client, db_session):

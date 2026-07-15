@@ -10,12 +10,13 @@
 
 ## 1. Business Goal
 
-Automate **content discovery** for TikTok DE reup pipeline. Operator runs two tracks:
+Automate **content discovery** for TikTok Creator Rewards reup pipeline. Operator runs two tracks:
 
 - **Nurture** — grow accounts via trend/idol clone (broad keywords, light TikTok gate)
-- **Beta** — Creator Rewards DE (long-tail keywords, full agent + TikTok gate)
+- **Beta** — Creator Rewards markets (long-tail keywords, full agent + TikTok gate)
 
-Active time target: **< 15 minutes/day** (review steps; async download/merge excluded).
+Discovery YouTube regions are operator-selected from an allowlist
+(US, DE, GB, JP, KR, ES, FR, MX; default **US**) — see US-079.
 
 Out of scope: upload automation (v1 handoff), account management outside profile registry.
 

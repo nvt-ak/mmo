@@ -28,6 +28,13 @@ videoscout.db-wal
 videoscout.db-shm
 videoscout.db-wal
 
+# TikTok session secrets (never commit)
+videoscout/.env
+videoscout/tiktok_cookies.json
+videoscout/tiktok_ms_token.txt
+**/tiktok_cookies.json
+**/tiktok_ms_token.txt
+
 graphify-out/
 data/
 

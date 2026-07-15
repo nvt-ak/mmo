@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from videoscout.db import get_db
-from videoscout.db.models import DiscoveryJobModel
+from videoscout.db.models import DiscoveryJobModel, SettingsModel
 from videoscout.schemas import (
     DiscoveryJobListResponse,
     DiscoveryJobResponse,
@@ -25,6 +25,10 @@ from videoscout.core_engine.discovery_progress import (
     TRENDING_VIDEO_LIMIT,
     VELOCITY_VIDEO_LIMIT,
     compute_discovery_progress,
+)
+from videoscout.core_engine.discovery_regions import (
+    DiscoveryRegionError,
+    resolve_discovery_region_codes,
 )
 from videoscout.workers.trend_discovery import run_trend_discovery_sync
 
@@ -130,6 +134,16 @@ async def run_discovery(
     if keyword_type_filter not in ("nurture", "beta", "both"):
         raise HTTPException(400, "keyword_type_filter must be nurture, beta, or both")
 
+    settings = db.query(SettingsModel).first()
+    try:
+        region_codes = resolve_discovery_region_codes(
+            settings_codes=settings.discovery_region_codes if settings else None,
+            region_codes=payload.region_codes,
+            region_code=payload.region_code,
+        )
+    except DiscoveryRegionError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
     active_job = _get_active_discovery_job(db)
     if active_job is not None:
         if not payload.force:
@@ -162,13 +176,13 @@ async def run_discovery(
         run_trend_discovery_sync,
         str(job.id),
         keyword_type_filter=keyword_type_filter,
-        region_code=payload.region_code or "DE",
+        region_codes=region_codes,
     )
 
     return DiscoveryRunResponse(
         job_id=str(job.id),
         status="started",
-        estimated_duration_seconds=60,
+        estimated_duration_seconds=60 * max(1, len(region_codes)),
         max_keywords=MAX_KEYWORDS_PER_JOB,
     )
 

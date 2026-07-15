@@ -41,6 +41,10 @@ from videoscout.core_engine.discovery_progress import (
     TRENDING_VIDEO_LIMIT,
     VELOCITY_VIDEO_LIMIT,
 )
+from videoscout.core_engine.discovery_regions import (
+    DEFAULT_DISCOVERY_REGION_CODES,
+    normalize_discovery_region_codes,
+)
 from videoscout.services.google_trends import google_trends_enabled
 from videoscout.core_engine.evidence_enrichment import enrich_top_scored, TOP_N_ENRICHMENT
 from videoscout.core_engine.validation_pass import validate_top_scored
@@ -191,7 +195,8 @@ async def run_trend_discovery(
     job_id: str,
     *,
     keyword_type_filter: str = "both",
-    region_code: str = "DE",
+    region_codes: Optional[List[str]] = None,
+    region_code: Optional[str] = None,
 ) -> None:
     db = get_session()
     try:
@@ -205,9 +210,16 @@ async def run_trend_discovery(
         db.close()
         return
 
+    if region_codes is not None:
+        resolved_regions = normalize_discovery_region_codes(region_codes)
+    elif region_code:
+        resolved_regions = normalize_discovery_region_codes([region_code])
+    else:
+        resolved_regions = list(DEFAULT_DISCOVERY_REGION_CODES)
+
     job.status = "running"
     job.started_at = datetime.utcnow()
-    job.progress_phase = "fetch_trends"
+    job.progress_phase = f"fetch_trends:{resolved_regions[0]}"
     db.commit()
 
     engine = SuggestionEngine(db_session=db)
@@ -216,108 +228,151 @@ async def run_trend_discovery(
     tiktok.start_batch()
 
     try:
-        _commit_job_progress(db, job, progress_phase="fetch_trends")
-        sources = fetch_discovery_sources(
-            region_code=region_code,
-            popular_limit=TRENDING_VIDEO_LIMIT,
-            velocity_limit=VELOCITY_VIDEO_LIMIT,
-            db=db,
-        )
-        sources_scanned = sum(1 for _, videos in sources if videos)
-        evidence_builder = EvidenceBuilder(
-            pipeline_run_id=str(job_uuid),
-            region=region_code,
-        )
-        logger.info(
-            "Discovery job %s trend_evidence schema=%s sources=%d",
-            job_id,
-            SCHEMA_VERSION,
-            sources_scanned,
-        )
-        _commit_job_progress(
-            db,
-            job,
-            sources_scanned=sources_scanned,
-            progress_phase="scan_videos",
-        )
-
         seen: set[str] = set()
         beta_queue: List[Dict[str, Any]] = []
         nurture_queue: List[Dict[str, Any]] = []
         max_word_width = 3 if keyword_type_filter == "nurture" else 5
         videos_scanned = 0
+        sources_scanned = 0
+        regions_with_sources = 0
+        last_evidence_builder: Optional[EvidenceBuilder] = None
 
         calibration = build_classifier_calibration(db)
 
-        for source_kind, video, velocity_percentiles in iter_scored_source_videos(
-            sources,
-            region_code=region_code,
-        ):
-            videos_scanned += 1
-            discovery_source = discovery_source_for_kind(source_kind)
-            for candidate in extract_keyword_candidates(
-                video["title"],
-                max_word_width=max_word_width,
-                discovery_source=discovery_source,
+        for region in resolved_regions:
+            _commit_job_progress(db, job, progress_phase=f"fetch_trends:{region}")
+            try:
+                sources = fetch_discovery_sources(
+                    region_code=region,
+                    popular_limit=TRENDING_VIDEO_LIMIT,
+                    velocity_limit=VELOCITY_VIDEO_LIMIT,
+                    db=db,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Discovery job %s region %s fetch failed: %s",
+                    job_id,
+                    region,
+                    exc,
+                )
+                continue
+
+            region_sources = sum(1 for _, videos in sources if videos)
+            if region_sources == 0:
+                logger.warning(
+                    "Discovery job %s region %s returned no sources",
+                    job_id,
+                    region,
+                )
+                continue
+
+            regions_with_sources += 1
+            sources_scanned += region_sources
+            evidence_builder = EvidenceBuilder(
+                pipeline_run_id=str(job_uuid),
+                region=region,
+            )
+            last_evidence_builder = evidence_builder
+            logger.info(
+                "Discovery job %s region=%s trend_evidence schema=%s sources=%d",
+                job_id,
+                region,
+                SCHEMA_VERSION,
+                region_sources,
+            )
+            _commit_job_progress(
+                db,
+                job,
+                sources_scanned=sources_scanned,
+                progress_phase=f"scan_videos:{region}",
+            )
+
+            for source_kind, video, velocity_percentiles in iter_scored_source_videos(
+                sources,
+                region_code=region,
             ):
-                keyword = candidate["keyword"].lower()
-                if keyword in seen:
-                    continue
-                seen.add(keyword)
+                videos_scanned += 1
+                discovery_source = discovery_source_for_kind(source_kind)
+                for candidate in extract_keyword_candidates(
+                    video["title"],
+                    max_word_width=max_word_width,
+                    discovery_source=discovery_source,
+                ):
+                    keyword = candidate["keyword"].lower()
+                    if keyword in seen:
+                        continue
+                    seen.add(keyword)
 
-                history_prior = build_history_prior(db, candidate["keyword"])
-                trend_evidence = serialize_evidence(
-                    evidence_builder.build(
-                        keyword=candidate["keyword"],
-                        source_video=video,
-                        source_kind=source_kind,
-                        velocity_percentile=velocity_percentiles.get(str(video.get("id") or "")),
-                        history_prior=history_prior,
+                    history_prior = build_history_prior(db, candidate["keyword"])
+                    trend_evidence = serialize_evidence(
+                        evidence_builder.build(
+                            keyword=candidate["keyword"],
+                            source_video=video,
+                            source_kind=source_kind,
+                            velocity_percentile=velocity_percentiles.get(
+                                str(video.get("id") or "")
+                            ),
+                            history_prior=history_prior,
+                        )
                     )
-                )
-                trend_signals = trend_signals_from_evidence(trend_evidence)
+                    trend_signals = trend_signals_from_evidence(trend_evidence)
 
-                enriched_candidate = {
-                    **candidate,
-                    "keyword": candidate["keyword"],
-                    "discovery_source": discovery_source,
-                    "trend_evidence": trend_evidence,
-                    "trend_signals": {
-                        **trend_signals,
-                        "video_id": video.get("id"),
-                        "channel_id": video.get("channel_id"),
-                    },
-                }
+                    enriched_candidate = {
+                        **candidate,
+                        "keyword": candidate["keyword"],
+                        "discovery_source": discovery_source,
+                        "trend_evidence": trend_evidence,
+                        "trend_signals": {
+                            **trend_signals,
+                            "video_id": video.get("id"),
+                            "channel_id": video.get("channel_id"),
+                        },
+                    }
 
-                provisional_type = classify_keyword_type(
-                    enriched_candidate["keyword"],
-                    trend_source=discovery_source,
-                    calibration=calibration,
-                )
-                gate_profile = "light" if provisional_type == "nurture" else "full"
-                tiktok_gate = await engine.check_tiktok_gate(
-                    enriched_candidate["keyword"],
-                    gate_profile,
-                )
-                job.candidates_checked = (job.candidates_checked or 0) + 1
-                db.commit()
+                    provisional_type = classify_keyword_type(
+                        enriched_candidate["keyword"],
+                        trend_source=discovery_source,
+                        calibration=calibration,
+                    )
+                    gate_profile = "light" if provisional_type == "nurture" else "full"
+                    tiktok_gate = await engine.check_tiktok_gate(
+                        enriched_candidate["keyword"],
+                        gate_profile,
+                    )
+                    job.candidates_checked = (job.candidates_checked or 0) + 1
+                    db.commit()
 
-                if provisional_type == "beta":
-                    if keyword_type_filter != "nurture":
-                        beta_queue.append({
-                            "candidate": enriched_candidate,
-                            "tiktok_gate": tiktok_gate,
-                        })
-                    continue
+                    if provisional_type == "beta":
+                        if keyword_type_filter != "nurture":
+                            beta_queue.append({
+                                "candidate": enriched_candidate,
+                                "tiktok_gate": tiktok_gate,
+                            })
+                        continue
 
-                nurture_queue.append({
-                    "candidate": enriched_candidate,
-                    "tiktok_gate": tiktok_gate,
-                })
+                    nurture_queue.append({
+                        "candidate": enriched_candidate,
+                        "tiktok_gate": tiktok_gate,
+                    })
 
-            _commit_job_progress(db, job, videos_scanned=videos_scanned)
+                _commit_job_progress(db, job, videos_scanned=videos_scanned)
+
+        if regions_with_sources == 0:
+            job.status = "failed"
+            job.progress_phase = "failed"
+            job.error_message = (
+                "All discovery regions failed to return YouTube sources. "
+                f"Tried: {', '.join(resolved_regions)}"
+            )
+            job.completed_at = datetime.utcnow()
+            db.commit()
+            return
 
         if google_trends_enabled():
+            evidence_builder = last_evidence_builder or EvidenceBuilder(
+                pipeline_run_id=str(job_uuid),
+                region=resolved_regions[0],
+            )
             trends_rows = fetch_google_trends_candidates(
                 db,
                 limit=VELOCITY_VIDEO_LIMIT,
@@ -515,11 +570,12 @@ async def run_trend_discovery(
         job.completed_at = datetime.utcnow()
         db.commit()
         logger.info(
-            "Discovery job %s complete: %d keywords (cap %d, %d beta queued)",
+            "Discovery job %s complete: %d keywords (cap %d, %d beta queued, regions=%s)",
             job_id,
             keywords_generated,
             MAX_KEYWORDS_PER_JOB,
             len(beta_queue),
+            ",".join(resolved_regions),
         )
     except Exception as exc:
         job.status = "failed"

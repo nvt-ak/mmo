@@ -26,6 +26,8 @@ yt-dlp>=2024.1
 # === TikTok ===
 httpx>=0.25
 TikTokApi>=6.0
+# Local Chrome/Brave cookie export (scripts/export_chrome_tiktok_cookies.py)
+browser-cookie3>=0.19.1
 
 # === Data ===
 numpy>=1.26

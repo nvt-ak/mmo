@@ -223,7 +223,8 @@ class ScanProgressResponse(BaseModel):
 # Discovery (R7a)
 class DiscoveryRunRequest(BaseModel):
     keyword_type_filter: str = 'both'  # nurture | beta | both
-    region_code: str = 'DE'
+    region_code: Optional[str] = None  # legacy single-region override
+    region_codes: Optional[List[str]] = None  # optional override of Settings list
     force: bool = False
 
 
@@ -633,6 +634,7 @@ class SettingsResponse(BaseModel):
     llm: LLMConfig
     tiktok: TikTokConfig
     scoring_rubrics: ScoringRubricsConfig
+    discovery_region_codes: List[str] = ["US"]
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -642,6 +644,7 @@ class UpdateSettingsRequest(BaseModel):
     llm: Optional[UpdateLLMConfig] = None
     scoring_rubrics: Optional[UpdateScoringRubrics] = None
     tiktok: Optional[TikTokConfig] = None
+    discovery_region_codes: Optional[List[str]] = None
 
 
 # Error response

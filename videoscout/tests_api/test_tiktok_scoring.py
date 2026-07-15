@@ -1,5 +1,6 @@
 """TikTok scoring enrichment tests for US-011 / US-053."""
 import asyncio
+import json
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -174,8 +175,67 @@ def test_get_ms_tokens_merges_env_and_dedupes(monkeypatch):
     monkeypatch.setenv("TIKTOK_MS_TOKEN", "token-a")
     monkeypatch.setenv("TIKTOK_MS_TOKENS", "token-b,token-a")
     monkeypatch.delenv("TIKTOK_MS_TOKEN_FILE", raising=False)
+    monkeypatch.delenv("TIKTOK_COOKIES_FILE", raising=False)
     with patch.object(tiktok_module, "DEFAULT_MS_TOKEN_FILE", Path("/nonexistent/ms_tokens.txt")):
-        assert tiktok_module.get_ms_tokens() == ["token-a", "token-b"]
+        with patch.object(
+            tiktok_module,
+            "DEFAULT_COOKIES_FILE",
+            Path("/nonexistent/tiktok_cookies.json"),
+        ):
+            assert tiktok_module.get_ms_tokens() == ["token-a", "token-b"]
+
+
+def test_parse_cookie_editor_export_keeps_longest_mstoken():
+    payload = [
+        {"name": "msToken", "value": "short", "domain": "www.tiktok.com"},
+        {"name": "msToken", "value": "much-longer-mstoken-value", "domain": ".tiktok.com"},
+        {"name": "sessionid", "value": "sid123", "domain": ".tiktok.com"},
+    ]
+    profiles = tiktok_module.parse_tiktok_cookies_payload(payload)
+    assert len(profiles) == 1
+    assert profiles[0]["msToken"] == "much-longer-mstoken-value"
+    assert profiles[0]["sessionid"] == "sid123"
+
+
+def test_parse_playwright_storage_state():
+    payload = {
+        "cookies": [
+            {"name": "msToken", "value": "tok", "domain": ".tiktok.com", "path": "/"},
+            {"name": "ttwid", "value": "tt", "domain": ".tiktok.com", "path": "/"},
+        ]
+    }
+    profiles = tiktok_module.parse_tiktok_cookies_payload(payload)
+    assert profiles == [{"msToken": "tok", "ttwid": "tt"}]
+
+
+def test_get_ms_tokens_reads_from_cookies_file(monkeypatch, tmp_path):
+    cookie_path = tmp_path / "cookies.json"
+    cookie_path.write_text(
+        json.dumps([{"name": "msToken", "value": "from-file", "domain": ".tiktok.com"}]),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("TIKTOK_MS_TOKEN", raising=False)
+    monkeypatch.delenv("TIKTOK_MS_TOKENS", raising=False)
+    monkeypatch.delenv("TIKTOK_MS_TOKEN_FILE", raising=False)
+    monkeypatch.setenv("TIKTOK_COOKIES_FILE", str(cookie_path))
+    with patch.object(tiktok_module, "DEFAULT_MS_TOKEN_FILE", Path("/nonexistent/x.txt")):
+        assert tiktok_module.get_ms_tokens() == ["from-file"]
+
+
+@pytest.mark.asyncio
+async def test_create_api_sessions_passes_cookie_profiles(monkeypatch):
+    monkeypatch.setenv("TIKTOK_BROWSER", "webkit")
+    monkeypatch.setenv("TIKTOK_NUM_SESSIONS", "2")
+    api = AsyncMock()
+    profiles = [{"msToken": "tok", "sessionid": "sid"}]
+    await tiktok_module._create_api_sessions(
+        api,
+        ms_tokens=["tok"],
+        cookie_profiles=profiles,
+    )
+    kwargs = api.create_sessions.await_args.kwargs
+    assert kwargs["cookies"] == profiles
+    assert kwargs["ms_tokens"] == ["tok"]
 
 
 def test_get_proxies_builds_playwright_dict(monkeypatch):
